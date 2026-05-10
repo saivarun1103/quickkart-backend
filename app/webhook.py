@@ -151,7 +151,7 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
                         menu_link = (
 
-                            f"https://project-gxnl5.vercel.app"
+                            f"https://quickkart-frontend-beta.vercel.app"
 
                             f"/{business.slug}/m/"
                             f"{existing_session.session_token}"
@@ -191,7 +191,7 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
                     menu_link = (
 
-                        f"https://project-gxnl5.vercel.app"  
+                        f"https://quickkart-frontend-beta.vercel.app"  
 
                         f"/{business.slug}/m/{session_token}"
                     )
