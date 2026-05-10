@@ -10,5 +10,4 @@ requests
 cloudinary
 python-jose[cryptography]
 razorpay
-jinja2
 pydantic[email]

@@ -1,8 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.orm import Session
-import uuid
-import os
-from fastapi import Request
 from app.db import SessionLocal
 from app.models import (
     MenuItem,
@@ -20,7 +17,7 @@ from datetime import datetime, timedelta
 from app.services.cloudinary_service import upload_image
 
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
 class PickupVerifyRequest(BaseModel):
     pickup_pin: str
