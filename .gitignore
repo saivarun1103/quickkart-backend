@@ -1,0 +1,15 @@
+# Virtual environment (common names)
+venv/
+.venv/
+env/
+python-venv/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*
+
+__pycache__/
+*.pyc
+
+node_modules/

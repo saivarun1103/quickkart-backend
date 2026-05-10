@@ -1,0 +1,27 @@
+from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import Optional
+
+
+class MenuItemResponse(BaseModel):
+    id: int
+    name: str
+    price: int
+    image_url: Optional[str] = None
+    available: bool
+    category: Optional[str] = None
+    dietary_type: Optional[str] = None
+    description: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class RegisterRequest(BaseModel):
+    business_name: str
+    owner_name: str
+    email: EmailStr
+    business_phone: str
+    password: str
+    business_type: str
+
+class LoginRequest(BaseModel):
+    identifier: str
+    password: str
