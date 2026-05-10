@@ -301,9 +301,62 @@ def get_orders(
     )
 ):
 
-    orders = db.query(Order).filter(
+    now = datetime.utcnow()
+
+    query = db.query(Order).filter(
         Order.business_id == business.id
-    ).order_by(
+    )
+
+    # TODAY
+    if range == "today":
+
+        start = datetime(
+            now.year,
+            now.month,
+            now.day
+        )
+
+        query = query.filter(
+            Order.created_at >= start
+        )
+
+    # YESTERDAY
+    elif range == "yesterday":
+
+        today_start = datetime(
+            now.year,
+            now.month,
+            now.day
+        )
+
+        yesterday_start = (
+            today_start - timedelta(days=1)
+        )
+
+        query = query.filter(
+            Order.created_at >= yesterday_start,
+            Order.created_at < today_start
+        )
+
+    # LAST 7 DAYS
+    elif range == "week":
+
+        week_start = now - timedelta(days=7)
+
+        query = query.filter(
+            Order.created_at >= week_start
+        )
+
+    # LAST 30 DAYS
+    elif range == "month":
+
+        month_start = now - timedelta(days=30)
+
+        query = query.filter(
+            Order.created_at >= month_start
+        )
+
+    orders = query.order_by(
         Order.created_at.desc()
     ).all()
 
