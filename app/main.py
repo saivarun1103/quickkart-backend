@@ -51,7 +51,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://quickkart-frontend-beta.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -392,15 +392,15 @@ def checkout(data: CheckoutRequest, db: Session = Depends(get_db)):
         ]
     }
 
-@app.get("/{business_slug}/m/{session_token}")
-def menu_session_redirect(
+# @app.get("/{business_slug}/m/{session_token}")
+# def menu_session_redirect(
 
-    session_token: str
-):
+#     session_token: str
+# ):
 
-    return FileResponse(
-        "frontend/dist/index.html"
-    )
+#     return FileResponse(
+#         "frontend/dist/index.html"
+#     )
 
 @app.get(
     "/api/check-customer/{session_token}"
@@ -469,11 +469,11 @@ def save_customer_name(
         "success": True
     }
 
-# @app.get("/{full_path:path}")
-# async def serve_react(full_path: str):
+@app.get("/{full_path:path}")
+async def serve_react(full_path: str):
 
-#     # only block API routes
-#     if full_path.startswith("api"):
-#         raise HTTPException(status_code=404)
+    # only block API routes
+    if full_path.startswith("api"):
+        raise HTTPException(status_code=404)
 
-#     return FileResponse("frontend/dist/index.html")
+    return FileResponse("frontend/dist/index.html")
