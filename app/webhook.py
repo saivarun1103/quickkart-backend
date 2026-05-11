@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, BackgroundTasks
 from app.config import VERIFY_TOKEN
-from app.services.whatsapp import send_templete, send_menu_template, send_menu_link, send_text
+from app.services.whatsapp import send_menu_link, send_text
 from app.services.orderParser import parse_order, calculate_total
-from app.db import SessionLocal
+from app.db import get_db
 from app.models import User, Order, MenuItem, Payment, MenuSession, Business
 from sqlalchemy.orm import Session
 from fastapi import Depends
@@ -18,12 +18,6 @@ from datetime import datetime, timedelta, timezone
 
 router  = APIRouter()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 # def should_use_template(db, phone):
 #     user = db.query(User).filter(User.phone == phone).first()
 
@@ -55,7 +49,11 @@ async def verify(request: Request):
     return "Verification failed"
 
 @router.post("/webhook")
-async def receive_message(request: Request, db: Session = Depends(get_db)):
+async def receive_message(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     data = await request.json()
 
     try:
@@ -157,7 +155,8 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
                             f"{existing_session.session_token}"
                         )
 
-                        send_menu_link(
+                        background_tasks.add_task(
+                            send_menu_link,
                             phone,
                             menu_link
                         )
@@ -196,7 +195,8 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
                         f"/{business.slug}/m/{session_token}"
                     )
 
-                    send_menu_link(
+                    background_tasks.add_task(
+                        send_menu_link,
                         phone,
                         menu_link
                     )
@@ -208,7 +208,11 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
                     items = parse_order(text, db)
 
                     if not items:
-                        send_text(phone, "❌ Couldn't understand your order.")
+                        background_tasks.add_task(
+                            send_text,
+                            phone,
+                            "❌ Couldn't understand your order."
+                        )
                         return {"status": "ok"}
 
                     total = 0
@@ -244,7 +248,11 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
                     # ❌ If nothing valid
                     if total == 0:
-                        send_text(phone, "❌ No valid items in order.")
+                        background_tasks.add_task(
+                            send_text,
+                            phone,
+                            "❌ No valid items in order."
+                        )
                         return {"status": "ok"}
                     
                     # ✅ Ask customer name first
@@ -257,7 +265,8 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
                         db.commit()
 
-                        send_text(
+                        background_tasks.add_task(
+                            send_text,
                             phone,
                             "Before confirming your order, please enter your name 🙂"
                         )
@@ -280,7 +289,11 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
                     response_msg += f"\n💰 Total: ₹{total}\n\n"
                     response_msg += "Reply YES to confirm your order."
 
-                    send_text(phone, response_msg)
+                    background_tasks.add_task(
+                        send_text,
+                        phone,
+                        response_msg
+                    )
 
                 # -------------------------
                 # ✅ CONFIRMATION FLOW
@@ -293,7 +306,8 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
                         if not user.pending_order:
 
-                            send_text(
+                            background_tasks.add_task(
+                                send_text,
                                 phone,
                                 "⚠️ No pending order found."
                             )
@@ -319,7 +333,9 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
                         payment_url = payment_link["short_url"]
 
-                        send_text(
+                        background_tasks.add_task(
+
+                            send_text,
 
                             phone,
 
@@ -340,7 +356,8 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
                         db.commit()
 
-                        send_text(
+                        background_tasks.add_task(
+                            send_text,
                             phone,
                             "❌ Order cancelled."
                         )
@@ -352,7 +369,11 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
                 # ✅ UNKNOWN INPUT
                 # -------------------------
                 else:
-                    send_text(phone, "Send 'menu' to start ordering 🍽️")
+                    background_tasks.add_task(
+                        send_text,
+                        phone,
+                        "Send 'menu' to start ordering 🍽️"
+                    )
 
             # -------------------------
             # ✅ UPDATE LAST MESSAGE TIME
@@ -369,6 +390,7 @@ async def receive_message(request: Request, db: Session = Depends(get_db)):
 
 async def razorpay_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
 
@@ -537,7 +559,9 @@ async def razorpay_webhook(
         # SEND SUCCESS MESSAGE
         # -------------------------
 
-        send_text(
+        background_tasks.add_task(
+
+            send_text,
 
             phone,
 

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from app.webhook import router
 
 from contextlib import asynccontextmanager
-from app.db import engine, SessionLocal
+from app.db import engine, get_db
 from app.models import Base, MenuItem, Business, User, MenuSession
 from fastapi.middleware.cors import CORSMiddleware
 from app.admin import router as admin_router
@@ -19,13 +19,6 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 import os
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 #database
 @asynccontextmanager

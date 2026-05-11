@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.orm import Session
-from app.db import SessionLocal
+from app.db import get_db
 from app.models import (
     MenuItem,
     Business,
@@ -22,14 +22,6 @@ router = APIRouter(prefix="/api/admin", tags=["Admin"])
 class PickupVerifyRequest(BaseModel):
     pickup_pin: str
   
-# DB Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 
 # ✅ Add Item (with optional image)
 @router.post("/menu")

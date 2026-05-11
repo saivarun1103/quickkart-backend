@@ -6,18 +6,11 @@ from fastapi import (
 
 from app.auth import decode_token
 
-from app.db import SessionLocal
+from app.db import get_db
 
 from app.models import Business
 
 from sqlalchemy.orm import Session
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def get_current_business(
