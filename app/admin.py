@@ -460,12 +460,13 @@ def verify_pickup(
     data: PickupVerifyRequest,
     db: Session = Depends(get_db)
 ):
+    allowed_statuses = ["ready", "pending", "preparing"]
 
     order = db.query(Order).filter(
 
         Order.pickup_pin == data.pickup_pin,
 
-        Order.status == "ready"
+        Order.status.in_(allowed_statuses)
 
     ).order_by(
 
