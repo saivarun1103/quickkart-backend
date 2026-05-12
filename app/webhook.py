@@ -150,6 +150,7 @@ async def receive_message(
                         menu_link = (
 
                             f"https://quickkart-frontend-beta.vercel.app"
+                            # f"https://collins-powered-darleen.ngrok-free.dev"
 
                             f"/{business.slug}/m/"
                             f"{existing_session.session_token}"
@@ -191,6 +192,7 @@ async def receive_message(
                     menu_link = (
 
                         f"https://quickkart-frontend-beta.vercel.app"  
+                        # f"https://collins-powered-darleen.ngrok-free.dev"
 
                         f"/{business.slug}/m/{session_token}"
                     )
@@ -328,7 +330,8 @@ async def receive_message(
                             phone=phone,
 
                             customer_name=
-                                user.customer_name
+                                user.customer_name,
+                            
                         )
 
                         payment_url = payment_link["short_url"]

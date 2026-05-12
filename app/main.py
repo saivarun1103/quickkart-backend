@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, Depends
 from app.webhook import router
-
+from app.routes import public
 from contextlib import asynccontextmanager
 from app.db import engine, get_db
 from app.models import Base, MenuItem, Business, User, MenuSession
@@ -18,7 +18,6 @@ from app.services.razorpay_service import create_payment_link
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-import os
 
 #database
 @asynccontextmanager
@@ -29,19 +28,23 @@ async def lifespan(app: FastAPI):
     # (optional) shutdown logic
 
 app = FastAPI(lifespan=lifespan)
-
+app.include_router(public.router)
 app.include_router(router)
 app.include_router(admin_router) 
 
-# origins = [
-#     # "http://localhost:5173",
-#     # "https://collins-powered-darleen.ngrok-free.dev",  # your frontend URL
-#     # "https://quickkart-3f8h.onrender.com/api/business",
-# ]
+origins = [
+    # "http://localhost:5173",
+    # "https://collins-powered-darleen.ngrok-free.dev",  # your frontend URL
+    "https://collins-powered-darleen.ngrok-free.dev",
+    "https://quickkart-3f8h.onrender.com/api/business",
+    "http://localhost:5173",
+    "https://quickkart-frontend-beta.vercel.app"
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://quickkart-frontend-beta.vercel.app"],
+    # allow_origins=["https://quickkart-frontend-beta.vercel.app"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

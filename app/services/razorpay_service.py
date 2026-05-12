@@ -16,7 +16,8 @@ client = razorpay.Client(
 def create_payment_link(
     amount,
     phone,
-    customer_name
+    customer_name,
+    order_id
 ):
 
     payment_link = client.payment_link.create({
@@ -47,7 +48,7 @@ def create_payment_link(
         "reminder_enable": True,
 
         "callback_url":
-            "https://project-gxnl5-jayxi2u1j-varun11n03-5162s-projects.vercel.app",
+            f"https://quickkart-frontend-beta.vercel.app/order-success?order_id={order_id}",
 
         "callback_method":
             "get",
