@@ -12,7 +12,9 @@ def get_public_order(
     db: Session = Depends(get_db)
 ):
     
-    # import re
+    import re
+
+    match = re.search(r'(\d+)$', combined)
 
     if "_" not in combined:
         raise HTTPException(
