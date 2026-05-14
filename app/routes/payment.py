@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -45,16 +45,18 @@ def create_payment_order(
 
     session = db.query(MenuSession).filter(
 
-        MenuSession.session_token == data["session_token"]
+        MenuSession.session_token == data["session_token"],
+
+        MenuSession.is_active == True
 
     ).first()
 
     if not session:
 
-        return {
-            "success": False,
-            "message": "Invalid session"
-        }
+        raise HTTPException(
+            status_code=401,
+            detail="Session expired"
+        )
 
     customer_phone = session.phone
 
