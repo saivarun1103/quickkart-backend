@@ -26,11 +26,6 @@ def get_public_order(
 
     order_id = int(order_id)
 
-    session_token = combined.replace(
-        str(order_id),
-        ""
-    )
-
     order = db.query(Order).filter(
         Order.id == order_id,
         Order.session_token == session_token
