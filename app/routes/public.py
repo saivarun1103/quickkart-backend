@@ -6,22 +6,41 @@ from app.models import Order, MenuItem
 
 router = APIRouter()
 
-@router.get("/public/order/{order_id}")
+@router.get("/public/order/{combined}")
 def get_public_order(
-    order_id: int,
+    combined: str,
     db: Session = Depends(get_db)
 ):
+    
+    import re
 
-    order = (
-        db.query(Order)
-        .filter(Order.id == order_id)
-        .first()
+    match = re.search(r'(\d+)$', combined)
+
+    if not match:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    order_id = int(match.group(1))
+
+    session_token = combined.replace(
+        str(order_id),
+        ""
     )
 
-    if not order:
+    order = db.query(Order).filter(
+        Order.id == order_id,
+        Order.session_token == session_token
+    ).first()
+
+    if (
+        not order
+        or order.session_token != session_token
+    ):
         raise HTTPException(
-            status_code=404,
-            detail="Order not found"
+            status_code=401,
+            detail="Unauthorized"
         )
 
     detailed_items = []

@@ -31,6 +31,7 @@ class Order(Base):
         ForeignKey("businesses.id"),
         nullable=False
     )
+    session_token = Column(String, nullable=True)
 
 class MenuItem(Base):
     __tablename__ = "menu_items"

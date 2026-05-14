@@ -296,7 +296,8 @@ def get_orders(
     now = datetime.utcnow()
 
     query = db.query(Order).filter(
-        Order.business_id == business.id
+        Order.business_id == business.id,
+        Order.payment_status == "paid"
     )
 
     # TODAY

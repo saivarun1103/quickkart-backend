@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, Depends
 from app.webhook import router
-from app.routes import public
+from app.routes import public, payment
 from contextlib import asynccontextmanager
 from app.db import engine, get_db
 from app.models import Base, MenuItem, Business, User, MenuSession
@@ -31,6 +31,10 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(public.router)
 app.include_router(router)
 app.include_router(admin_router) 
+app.include_router(
+    payment.router,
+    prefix="/api"
+)
 
 origins = [
     # "http://localhost:5173",
@@ -38,6 +42,8 @@ origins = [
     "https://collins-powered-darleen.ngrok-free.dev",
     "https://quickkart-3f8h.onrender.com/api/business",
     "http://localhost:5173",
+    "http://192.168.0.106:5173",
+    "http://192.168.0.106:8000",
     "https://quickkart-frontend-beta.vercel.app"
 ]
 
@@ -78,6 +84,7 @@ def get_menu(slug: str,db: Session = Depends(get_db)):
 
     return {
         "business": {
+            "id": business.id,
             "name": business.name,
             "logo_url": business.logo_url,
             "slug": business.slug

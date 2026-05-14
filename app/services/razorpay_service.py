@@ -60,3 +60,22 @@ def create_payment_link(
     })
 
     return payment_link
+
+
+def create_razorpay_order(
+    amount,
+    receipt
+):
+
+    order = client.order.create({
+
+        "amount": amount * 100,
+
+        "currency": "INR",
+
+        "receipt": receipt,
+
+        "payment_capture": 1
+    })
+
+    return order

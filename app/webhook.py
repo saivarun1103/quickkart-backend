@@ -151,6 +151,7 @@ async def receive_message(
 
                             f"https://quickkart-frontend-beta.vercel.app"
                             # f"https://collins-powered-darleen.ngrok-free.dev"
+                            # f"https://192.168.0.106:5173"
 
                             f"/{business.slug}/m/"
                             f"{existing_session.session_token}"
@@ -193,6 +194,7 @@ async def receive_message(
 
                         f"https://quickkart-frontend-beta.vercel.app"  
                         # f"https://collins-powered-darleen.ngrok-free.dev"
+                        # f"https://192.168.0.106:5173"
 
                         f"/{business.slug}/m/{session_token}"
                     )
@@ -389,209 +391,268 @@ async def receive_message(
 
     return {"status": "ok"}
 
-@router.post("/razorpay-webhook")
+# @router.post("/razorpay-webhook")
 
+# async def razorpay_webhook(
+#     request: Request,
+#     background_tasks: BackgroundTasks,
+#     db: Session = Depends(get_db)
+# ):
+
+#     print("RAZORPAY WEBHOOK HIT")
+
+#     payload = await request.json()
+
+#     print(payload)
+
+#     event = payload.get("event")
+
+#     print("EVENT:", event)
+
+#     if event not in [
+#         "payment.captured",
+#         "payment_link.paid"
+#     ]:
+#         return {"status": "ignored"}
+
+#     payment_entity = payload["payload"]["payment"]["entity"]
+
+#     razorpay_payment_id = payment_entity["id"]
+
+#     amount = payment_entity["amount"] // 100
+
+#     payment_method = payment_entity["method"]
+
+#     notes = payment_entity.get(
+#         "notes",
+#         {}
+#     )
+
+#     if not isinstance(notes, dict):
+
+#         return {
+#             "success": True
+#         }
+
+#     phone = notes.get("phone")
+
+#     if not phone:
+
+#         return {
+#             "status": "phone_missing"
+#         }
+
+#     try:
+
+#         user = db.query(User).filter(
+#             User.phone == phone
+#         ).first()
+
+#         if not user:
+
+#             return {
+#                 "status": "user_not_found"
+#             }
+
+#         if not user.pending_order:
+
+#             return {
+#                 "status": "no_pending_order"
+#             }
+
+#         import json, random
+
+#         pending_data = json.loads(
+#             user.pending_order
+#         )
+
+#         import random
+
+#         while True:
+
+#             generated_pin = str(
+#                 random.randint(1000, 9999)
+#             )
+
+#             existing_order = db.query(Order).filter(
+
+#                 Order.business_id == pending_data["business_id"],
+
+#                 Order.pickup_pin == generated_pin,
+
+#                 Order.status.in_([
+#                     "pending",
+#                     "preparing",
+#                     "ready"
+#                 ])
+
+#             ).first()
+
+#             if not existing_order:
+
+#                 break
+
+#         # -------------------------
+#         # CREATE ORDER
+#         # -------------------------
+
+#         new_order = Order(
+
+#             phone=phone,
+
+#             customer_name=
+#                 user.customer_name,
+
+#             items=
+#                 pending_data["items"],
+
+#             total_price=
+#                 int(float(pending_data["total_price"])),
+
+#             pickup_pin=generated_pin,
+
+#             status="pending",
+
+#             business_id=pending_data["business_id"],
+
+#             payment_status="paid",
+
+#             payment_id=
+#                 razorpay_payment_id
+#         )
+
+#         db.add(new_order)
+
+#         db.commit()
+
+#         db.refresh(new_order)
+
+#         # -------------------------
+#         # CREATE PAYMENT ROW
+#         # -------------------------
+
+#         payment = Payment(
+
+#             order_id=
+#                 new_order.id,
+
+#             business_id=pending_data["business_id"],
+
+#             phone=phone,
+
+#             customer_name=
+#                 user.customer_name,
+
+#             razorpay_payment_id=
+#                 razorpay_payment_id,
+
+#             amount=amount,
+
+#             status="captured",
+
+#             payment_method=
+#                 payment_method
+#         )
+
+#         db.add(payment)
+
+#         # -------------------------
+#         # CLEAR PENDING ORDER
+#         # -------------------------
+
+#         user.pending_order = None
+
+#         user.state = None
+
+#         db.commit()
+
+#         # -------------------------
+#         # SEND SUCCESS MESSAGE
+#         # -------------------------
+
+#         background_tasks.add_task(
+
+#             send_text,
+
+#             phone,
+
+#             f"✅ Payment successful!\n\n"
+
+#             f"🧾 Order #{new_order.id}\n"
+
+#             f"💰 Amount Paid: ₹{amount}\n\n"
+
+#             f"🔐 Pickup PIN: {generated_pin}\n\n"
+
+#             f"Use this PIN while picking up your order."
+#         )
+
+#         print("ORDER CREATED")
+
+#         return {
+#             "status": "success"
+#         }
+
+#     except Exception as e:
+
+#         print(
+#             "WEBHOOK ERROR:",
+#             e
+#         )
+
+#         return {
+#             "status": "error"
+#         }
+
+
+@router.post("/razorpay-webhook")
 async def razorpay_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
 
-    print("RAZORPAY WEBHOOK HIT")
-
     payload = await request.json()
 
-    print(payload)
+    print("RAZORPAY WEBHOOK HIT")
 
     event = payload.get("event")
 
-    print("EVENT:", event)
+    if event != "payment.captured":
 
-    if event not in [
-        "payment.captured",
-        "payment_link.paid"
-    ]:
         return {"status": "ignored"}
 
     payment_entity = payload["payload"]["payment"]["entity"]
 
     razorpay_payment_id = payment_entity["id"]
 
-    amount = payment_entity["amount"] // 100
+    razorpay_order_id = payment_entity["order_id"]
 
-    payment_method = payment_entity["method"]
+    # -------------------------
+    # FIND ORDER
+    # -------------------------
 
-    notes = payment_entity.get(
-        "notes",
-        {}
+    order = db.query(Order).filter(
+
+        Order.payment_id == razorpay_payment_id
+
+    ).first()
+
+    # Already processed
+    if order:
+
+        return {
+            "status": "already_processed"
+        }
+
+    # -------------------------
+    # OPTIONAL FALLBACK LOGIC
+    # -------------------------
+
+    print(
+        "Webhook received payment:",
+        razorpay_payment_id
     )
 
-    phone = notes.get("phone")
-
-    if not phone:
-
-        return {
-            "status": "phone_missing"
-        }
-
-    try:
-
-        user = db.query(User).filter(
-            User.phone == phone
-        ).first()
-
-        if not user:
-
-            return {
-                "status": "user_not_found"
-            }
-
-        if not user.pending_order:
-
-            return {
-                "status": "no_pending_order"
-            }
-
-        import json, random
-
-        pending_data = json.loads(
-            user.pending_order
-        )
-
-        import random
-
-        while True:
-
-            generated_pin = str(
-                random.randint(1000, 9999)
-            )
-
-            existing_order = db.query(Order).filter(
-
-                Order.business_id == pending_data["business_id"],
-
-                Order.pickup_pin == generated_pin,
-
-                Order.status.in_([
-                    "pending",
-                    "preparing",
-                    "ready"
-                ])
-
-            ).first()
-
-            if not existing_order:
-
-                break
-
-        # -------------------------
-        # CREATE ORDER
-        # -------------------------
-
-        new_order = Order(
-
-            phone=phone,
-
-            customer_name=
-                user.customer_name,
-
-            items=
-                pending_data["items"],
-
-            total_price=
-                int(float(pending_data["total_price"])),
-
-            pickup_pin=generated_pin,
-
-            status="pending",
-
-            business_id=pending_data["business_id"],
-
-            payment_status="paid",
-
-            payment_id=
-                razorpay_payment_id
-        )
-
-        db.add(new_order)
-
-        db.commit()
-
-        db.refresh(new_order)
-
-        # -------------------------
-        # CREATE PAYMENT ROW
-        # -------------------------
-
-        payment = Payment(
-
-            order_id=
-                new_order.id,
-
-            business_id=pending_data["business_id"],
-
-            phone=phone,
-
-            customer_name=
-                user.customer_name,
-
-            razorpay_payment_id=
-                razorpay_payment_id,
-
-            amount=amount,
-
-            status="captured",
-
-            payment_method=
-                payment_method
-        )
-
-        db.add(payment)
-
-        # -------------------------
-        # CLEAR PENDING ORDER
-        # -------------------------
-
-        user.pending_order = None
-
-        user.state = None
-
-        db.commit()
-
-        # -------------------------
-        # SEND SUCCESS MESSAGE
-        # -------------------------
-
-        background_tasks.add_task(
-
-            send_text,
-
-            phone,
-
-            f"✅ Payment successful!\n\n"
-
-            f"🧾 Order #{new_order.id}\n"
-
-            f"💰 Amount Paid: ₹{amount}\n\n"
-
-            f"🔐 Pickup PIN: {generated_pin}\n\n"
-
-            f"Use this PIN while picking up your order."
-        )
-
-        print("ORDER CREATED")
-
-        return {
-            "status": "success"
-        }
-
-    except Exception as e:
-
-        print(
-            "WEBHOOK ERROR:",
-            e
-        )
-
-        return {
-            "status": "error"
-        }
+    return {
+        "status": "ok"
+    }
