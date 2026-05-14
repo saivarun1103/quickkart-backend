@@ -245,7 +245,8 @@ def get_session_data(
 ):
 
     menu_session = db.query(MenuSession).filter(
-        MenuSession.session_token == session_token
+        MenuSession.session_token == session_token,
+        MenuSession.is_active == True
     ).first()
 
     if not menu_session:
@@ -394,7 +395,8 @@ def check_customer(
 ):
 
     menu_session = db.query(MenuSession).filter(
-        MenuSession.session_token == session_token
+        MenuSession.session_token == session_token,
+        MenuSession.is_active == True
     ).first()
 
     if not menu_session:
