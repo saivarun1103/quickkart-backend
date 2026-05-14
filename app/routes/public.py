@@ -12,15 +12,17 @@ def get_public_order(
     db: Session = Depends(get_db)
 ):
     
-    import re
+    # import re
 
-    match = re.search(r'(\d+)$', combined)
-
-    if not match:
+    if "_" not in combined:
         raise HTTPException(
             status_code=401,
             detail="Unauthorized"
         )
+
+    session_token, order_id = combined.rsplit("_", 1)
+
+    order_id = int(order_id)
 
     order_id = int(match.group(1))
 
