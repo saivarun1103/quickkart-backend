@@ -26,8 +26,6 @@ def get_public_order(
 
     order_id = int(order_id)
 
-    order_id = int(match.group(1))
-
     session_token = combined.replace(
         str(order_id),
         ""
