@@ -395,8 +395,7 @@ def check_customer(
 ):
 
     menu_session = db.query(MenuSession).filter(
-        MenuSession.session_token == session_token,
-        MenuSession.is_active == True
+        MenuSession.session_token == session_token
     ).first()
 
     if not menu_session:
