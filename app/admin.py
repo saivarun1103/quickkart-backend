@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, BackgroundTasks
+from sqlalchemy.ext.asyncio import (
+    AsyncSession
+)
+from sqlalchemy import select
 from app.db import get_db
 from app.models import (
     MenuItem,
@@ -25,7 +28,7 @@ class PickupVerifyRequest(BaseModel):
 
 # ✅ Add Item (with optional image)
 @router.post("/menu")
-def add_item(
+async def add_item(
     name: str = Form(...),
 
     price: float = Form(...),
@@ -38,18 +41,26 @@ def add_item(
 
     file: UploadFile = File(None),
 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
     )
 ):
 
-    # 🔥 CHECK EXISTING ITEM
-    existing_item = db.query(MenuItem).filter(
-        MenuItem.business_id == business.id,
-        MenuItem.name.ilike(name)
-    ).first()
+    # CHECK EXISTING ITEM
+    result = await db.execute(
+        select(MenuItem).where(
+            MenuItem.business_id
+            == business.id,
+
+            MenuItem.name.ilike(name)
+        )
+    )
+
+    existing_item = (
+        result.scalar_one_or_none()
+    )
 
     image_url = None
 
@@ -57,99 +68,120 @@ def add_item(
 
         try:
 
-            image_url = upload_image(file)
+            image_url = upload_image(
+                file
+            )
 
         except Exception as e:
 
-            print("CLOUDINARY ERROR:", e)
+            print(
+                "CLOUDINARY ERROR:",
+                e
+            )
 
             raise HTTPException(
                 status_code=500,
                 detail="Image upload failed"
             )
 
-    # 🔥 RESTORE EXISTING ITEM
+    # RESTORE EXISTING ITEM
     if existing_item:
 
         existing_item.price = price
 
-        existing_item.category = category
+        existing_item.category = (
+            category
+        )
 
-        existing_item.description = description
+        existing_item.description = (
+            description
+        )
 
-        existing_item.dietary_type = dietary_type
+        existing_item.dietary_type = (
+            dietary_type
+        )
 
         existing_item.available = True
-
         existing_item.is_active = True
 
         if image_url:
-            existing_item.image_url = image_url
+            existing_item.image_url = (
+                image_url
+            )
 
-        db.commit()
+        await db.commit()
 
-        db.refresh(existing_item)
+        await db.refresh(
+            existing_item
+        )
 
         return existing_item
 
-    # 🔥 CREATE NEW ITEM
+    # CREATE NEW ITEM
     new_item = MenuItem(
         name=name,
-
         price=price,
-
         category=category,
-
         description=description,
-
         dietary_type=dietary_type,
-
         image_url=image_url,
-
         available=True,
-
         is_active=True,
-
         business_id=business.id
     )
 
     db.add(new_item)
 
-    db.commit()
+    await db.commit()
 
-    db.refresh(new_item)
+    await db.refresh(new_item)
 
     return new_item
 
 @router.get("/menu")
-def get_menu(
-    db: Session = Depends(get_db),
+async def get_menu(
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
     )
 ):
-    return db.query(MenuItem).filter(
-        MenuItem.business_id == business.id,
-        MenuItem.is_active == True
-    ).all()
+    result = await db.execute(
+        select(MenuItem).where(
+            MenuItem.business_id
+            == business.id,
+
+            MenuItem.is_active
+            == True
+        )
+    )
+
+    menu_items = (
+        result.scalars().all()
+    )
+
+    return menu_items
 
 ##Availability
 @router.patch("/menu/{item_id}/toggle")
-def toggle_item(
+async def toggle_item(
     item_id: int,
 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
     )
 ):
-    item = db.query(MenuItem).filter(
-        MenuItem.id == item_id,
+    result = await db.execute(
+        select(MenuItem).where(
+            MenuItem.id == item_id,
+            MenuItem.business_id
+            == business.id
+        )
+    )
 
-        MenuItem.business_id == business.id
-    ).first()
+    item = result.scalar_one_or_none()
 
     if not item:
         raise HTTPException(
@@ -161,26 +193,30 @@ def toggle_item(
         not item.available
     )
 
-    db.commit()
+    await db.commit()
 
     return item
 
 ##delete item
 @router.delete("/menu/{item_id}")
-def delete_item(
+async def delete_item(
     item_id: int,
 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
     )
 ):
-    item = db.query(MenuItem).filter(
-        MenuItem.id == item_id,
+    result = await db.execute(
+        select(MenuItem).where(
+            MenuItem.id == item_id,
+            MenuItem.business_id
+            == business.id
+        )
+    )
 
-        MenuItem.business_id == business.id
-    ).first()
+    item = result.scalar_one_or_none()
 
     if not item:
         raise HTTPException(
@@ -188,17 +224,16 @@ def delete_item(
             "Item not found"
         )
 
-    # 🔥 SOFT DELETE
     item.is_active = False
 
-    db.commit()
+    await db.commit()
 
     return {
         "message": "Item deleted"
     }
 
 @router.put("/menu/{item_id}")
-def update_item(
+async def update_item(
     item_id: int,
 
     name: str = Form(None),
@@ -213,17 +248,21 @@ def update_item(
 
     file: UploadFile = File(None),
 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
     )
 ):
-    item = db.query(MenuItem).filter(
-        MenuItem.id == item_id,
+    result = await db.execute(
+        select(MenuItem).where(
+            MenuItem.id == item_id,
+            MenuItem.business_id
+            == business.id
+        )
+    )
 
-        MenuItem.business_id == business.id
-    ).first()
+    item = result.scalar_one_or_none()
 
     if not item:
         raise HTTPException(
@@ -238,32 +277,33 @@ def update_item(
     if price:
         item.price = price
 
-    
     item.description = description
-
     item.category = category
-
     item.dietary_type = dietary_type
 
     # Update image
     if file:
 
         try:
-
-            item.image_url = upload_image(file)
+            item.image_url = (
+                upload_image(file)
+            )
 
         except Exception as e:
 
-            print("CLOUDINARY ERROR:", e)
+            print(
+                "CLOUDINARY ERROR:",
+                e
+            )
 
             raise HTTPException(
                 status_code=500,
                 detail="Image upload failed"
             )
 
-    db.commit()
+    await db.commit()
 
-    db.refresh(item)
+    await db.refresh(item)
 
     return item
 
@@ -282,11 +322,11 @@ def get_me(
 
 ##Admin orders page.
 @router.get("/orders")
-def get_orders(
+async def get_orders(
 
     range: str = "today",
 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
@@ -295,7 +335,7 @@ def get_orders(
 
     now = datetime.utcnow()
 
-    query = db.query(Order).filter(
+    stmt = select(Order).where(
         Order.business_id == business.id,
         Order.payment_status == "paid"
     )
@@ -309,7 +349,7 @@ def get_orders(
             now.day
         )
 
-        query = query.filter(
+        stmt = stmt.where(
             Order.created_at >= start
         )
 
@@ -326,7 +366,7 @@ def get_orders(
             today_start - timedelta(days=1)
         )
 
-        query = query.filter(
+        stmt = stmt.where(
             Order.created_at >= yesterday_start,
             Order.created_at < today_start
         )
@@ -336,7 +376,7 @@ def get_orders(
 
         week_start = now - timedelta(days=7)
 
-        query = query.filter(
+        stmt = stmt.where(
             Order.created_at >= week_start
         )
 
@@ -345,37 +385,49 @@ def get_orders(
 
         month_start = now - timedelta(days=30)
 
-        query = query.filter(
+        stmt = stmt.where(
             Order.created_at >= month_start
         )
 
-    orders = query.order_by(
+    stmt = stmt.order_by(
         Order.created_at.desc()
-    ).all()
+    )
+
+    result = await db.execute(stmt)
+
+    orders = result.scalars().all()
 
     return orders
 
 
 ##Update Status API
 @router.patch("/orders/{order_id}")
-def update_order_status(
+async def update_order_status(
 
     order_id: int,
 
+    background_tasks: BackgroundTasks,
+
     status: str = Form(...),
 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
     )
 ):
 
-    order = db.query(Order).filter(
-        Order.id == order_id,
+    result = await db.execute(
+        select(Order).where(
+            Order.id == order_id,
+            Order.business_id
+            == business.id
+        )
+    )
 
-        Order.business_id == business.id
-    ).first()
+    order = (
+        result.scalars().first()
+    )
 
     if not order:
 
@@ -384,17 +436,18 @@ def update_order_status(
             "Order not found"
         )
 
-    # ✅ Prevent changing locked orders
-
-    if order.status in ["ready", "completed"]:
+    # Prevent changing locked orders
+    if order.status in [
+        "ready",
+        "completed"
+    ]:
 
         raise HTTPException(
             status_code=400,
             detail="Order status is locked"
         )
 
-    # ✅ Valid transitions
-
+    # Valid transitions
     if status not in [
         "preparing",
         "ready"
@@ -417,63 +470,80 @@ def update_order_status(
 
     current_status = order.status
 
-    # ✅ Check transition validity
-
-    if status not in allowed_transitions[current_status]:
+    if status not in (
+        allowed_transitions[
+            current_status
+        ]
+    ):
 
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Cannot change status from "
-                f"{current_status} to {status}"
+                f"Cannot change status "
+                f"from {current_status} "
+                f"to {status}"
             )
         )
 
-    # ✅ Update status
-
     order.status = status
 
-    db.commit()
+    await db.commit()
 
-    db.commit()
-
-    # ✅ Send WhatsApp when READY
-
+    # WhatsApp when READY
     if status == "ready":
 
-        send_text(
+        background_tasks.add_task(
+
+            send_text,
 
             order.phone,
 
-            f"✅ Your order is ready for pickup!\n\n"
-            f"Pickup PIN: {order.pickup_pin}\n\n"
-            f"Please show this PIN while collecting your order 🍽️"
+            f"✅ Your order is ready "
+            f"for pickup!\n\n"
+
+            f"Pickup PIN: "
+            f"{order.pickup_pin}\n\n"
+
+            f"Please show this PIN "
+            f"while collecting "
+            f"your order 🍽️"
         )
 
-    db.commit()
-
-    db.refresh(order)
+    await db.refresh(order)
 
     return order
 
 @router.post("/verify-pickup")
-def verify_pickup(
+async def verify_pickup(
     data: PickupVerifyRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    allowed_statuses = ["ready", "pending", "preparing"]
 
-    order = db.query(Order).filter(
+    allowed_statuses = [
+        "ready",
+        "pending",
+        "preparing"
+    ]
 
-        Order.pickup_pin == data.pickup_pin,
+    result = await db.execute(
+        select(Order)
+        .where(
+            Order.pickup_pin
+            == data.pickup_pin,
 
-        Order.status.in_(allowed_statuses)
+            Order.status.in_(
+                allowed_statuses
+            )
+        )
+        .order_by(
+            Order.created_at
+            .desc()
+        )
+    )
 
-    ).order_by(
-
-        Order.created_at.desc()
-
-    ).first()
+    order = (
+        result.scalars().first()
+    )
 
     if not order:
 
@@ -484,34 +554,46 @@ def verify_pickup(
 
     order.status = "completed"
 
-    business = db.query(Business).filter(
-        Business.id == order.business_id
-    ).first()
+    result = await db.execute(
+        select(Business).where(
+            Business.id
+            == order.business_id
+        )
+    )
 
-    menu_session = db.query(
-        MenuSession
-    ).filter(
+    business = (
+        result.scalar_one_or_none()
+    )
 
-        MenuSession.phone == order.phone,
+    result = await db.execute(
+        select(MenuSession)
+        .where(
 
-        MenuSession.business_id
+            MenuSession.phone
+            == order.phone,
+
+            MenuSession.business_id
             == business.id,
 
-        MenuSession.is_active == True
+            MenuSession.is_active
+            == True
+        )
+        .order_by(
+            MenuSession.created_at
+            .desc()
+        )
+    )
 
-    ).order_by(
-
-        MenuSession.created_at.desc()
-
-    ).first()
+    menu_session = (
+        result.scalars().first()
+    )
 
     if menu_session:
-
         menu_session.is_active = False
 
-    db.commit()
+    await db.commit()
 
-    db.refresh(order)
+    await db.refresh(order)
 
     customer_name = (
         order.customer_name
@@ -523,8 +605,11 @@ def verify_pickup(
 
         order.phone,
 
-        f"🙏 Thank you {customer_name} for ordering from "
+        f"🙏 Thank you "
+        f"{customer_name} "
+        f"for ordering from "
         f"{business.name}!\n\n"
+
         f"Please visit again ❤️"
     )
 
@@ -540,11 +625,11 @@ def verify_pickup(
     }
 
 @router.get("/analytics")
-def get_analytics(
+async def get_analytics(
 
     date: str,
 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 
     business: Business = Depends(
         get_current_business
@@ -564,17 +649,21 @@ def get_analytics(
 
     end = start + timedelta(days=1)
 
-    orders = db.query(Order).filter(
+    result = await db.execute(
+        select(Order).where(
+            Order.business_id
+            == business.id,
 
-        Order.business_id == business.id,
+            Order.created_at >= start,
 
-        Order.created_at >= start,
+            Order.created_at < end,
 
-        Order.created_at < end,
+            Order.payment_status
+            == "paid"
+        )
+    )
 
-        Order.payment_status == "paid"
-
-    ).all()
+    orders = result.scalars().all()
 
     total_sales = sum(
         float(order.total_price)
@@ -584,10 +673,7 @@ def get_analytics(
     total_orders = len(orders)
 
     return {
-
         "date": date,
-
         "total_sales": total_sales,
-
         "total_orders": total_orders
     }

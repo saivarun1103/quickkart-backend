@@ -17,15 +17,21 @@ from app.dependencies import get_current_business
 from app.services.razorpay_service import create_payment_link
 from pydantic import BaseModel
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import (
+    AsyncSession
+)
+from sqlalchemy import select
 
 #database
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ✅ Startup logic
-    Base.metadata.create_all(bind=engine)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            Base.metadata.create_all
+        )
+
     yield
-    # (optional) shutdown logic
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(public.router)
@@ -42,6 +48,7 @@ origins = [
     "https://collins-powered-darleen.ngrok-free.dev",
     "https://quickkart-3f8h.onrender.com/api/business",
     "http://localhost:5173",
+    "http://localhost:8000",
     "http://192.168.0.106:5173",
     "http://192.168.0.106:8000",
     "https://quickkart-frontend-beta.vercel.app"
@@ -51,6 +58,7 @@ app.add_middleware(
     CORSMiddleware,
     # allow_origins=["https://quickkart-frontend-beta.vercel.app"],
     allow_origins=origins,
+    # allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,11 +73,22 @@ class CheckoutRequest(BaseModel):
     items: dict
 
 ##Menu page
+from sqlalchemy import select
+
+
 @app.get("/api/menu/{slug}")
-def get_menu(slug: str,db: Session = Depends(get_db)):
-    business = db.query(Business).filter(
-        Business.slug == slug
-    ).first()
+async def get_menu(
+    slug: str,
+    db: AsyncSession = Depends(get_db)
+):
+
+    result = await db.execute(
+        select(Business).where(
+            Business.slug == slug
+        )
+    )
+
+    business = result.scalar_one_or_none()
 
     if not business:
         raise HTTPException(
@@ -77,10 +96,14 @@ def get_menu(slug: str,db: Session = Depends(get_db)):
             detail="Business not found"
         )
 
-    items = db.query(MenuItem).filter(
-        MenuItem.business_id == business.id,
-        MenuItem.is_active == True
-    ).all()
+    result = await db.execute(
+        select(MenuItem).where(
+            MenuItem.business_id == business.id,
+            MenuItem.is_active == True
+        )
+    )
+
+    items = result.scalars().all()
 
     return {
         "business": {
@@ -143,51 +166,85 @@ def get_business(
 
 ##register endpoint
 @app.post("/api/register")
-def register(data: RegisterRequest, db: Session = Depends(get_db)):
-    # 🔍 Check existing email
-    existing = db.query(Business).filter(
-        Business.email == data.email
-    ).first()
+async def register(
+
+    data: RegisterRequest,
+
+    db: AsyncSession = Depends(
+        get_db
+    )
+):
+
+    result = await db.execute(
+        select(Business).where(
+            Business.email
+            == data.email
+        )
+    )
+
+    existing = (
+        result.scalar_one_or_none()
+    )
 
     if existing:
+
         raise HTTPException(
             status_code=400,
             detail="Email already registered"
         )
 
-    # 🔒 Hash password
-    hashed_password = hash_password(
-        data.password
+    hashed_password = (
+        hash_password(
+            data.password
+        )
     )
 
-    # 🔗 Create slug
-    slug = data.business_name.lower().replace(" ", "-")
+    slug = (
+        data.business_name
+        .lower()
+        .replace(" ", "-")
+    )
 
-    # 🏪 Create business
     business = Business(
-        name=data.business_name,
-        owner_name=data.owner_name,
-        email=data.email,
-        business_phone=normalize_phone(
-            data.business_phone
-        ),
-        business_type=data.business_type,
-        password_hash=hashed_password,
+
+        name=
+            data.business_name,
+
+        owner_name=
+            data.owner_name,
+
+        email=
+            data.email,
+
+        business_phone=
+            normalize_phone(
+                data.business_phone
+            ),
+
+        business_type=
+            data.business_type,
+
+        password_hash=
+            hashed_password,
+
         slug=slug
     )
 
     db.add(business)
 
-    db.commit()
+    await db.commit()
 
-    db.refresh(business)
+    await db.refresh(
+        business
+    )
 
     return {
-        "message": "Business registered successfully"
+        "message":
+            "Business registered successfully"
     }
 
 @app.post("/api/login")
-def login(data: LoginRequest, db: Session = Depends(get_db)):
+async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     # 🔍 Get input
     identifier = data.identifier.strip()
@@ -198,10 +255,20 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     )
 
     # 🔍 Find business
-    business = db.query(Business).filter(
-        (Business.email == identifier) |
-        (Business.business_phone == normalized_phone)
-    ).first()
+    result = await db.execute(
+        select(Business).where(
+            (Business.email == identifier)
+            |
+            (
+                Business.business_phone
+                == normalized_phone
+            )
+        )
+    )
+
+    business = (
+        result.scalar_one_or_none()
+    )
 
     # ❌ Invalid user
     if not business:
@@ -239,15 +306,22 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/api/session/{session_token}")
-def get_session_data(
+async def get_session_data(
     session_token: str,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
-    menu_session = db.query(MenuSession).filter(
-        MenuSession.session_token == session_token,
-        MenuSession.is_active == True
-    ).first()
+    result = await db.execute(
+        select(MenuSession).where(
+            MenuSession.session_token
+            == session_token,
+            MenuSession.is_active == True
+        )
+    )
+
+    menu_session = (
+        result.scalar_one_or_none()
+    )
 
     if not menu_session:
         raise HTTPException(
@@ -257,17 +331,12 @@ def get_session_data(
 
     expires_at = menu_session.expires_at
 
-    print("RAW EXPIRES:", expires_at)
-    print("TYPE:", type(expires_at))
-
-    # ✅ convert safely
     if expires_at is None:
         raise HTTPException(
             status_code=400,
             detail="Invalid session expiry"
         )
 
-    # ✅ make timezone aware if needed
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(
             tzinfo=timezone.utc
@@ -275,27 +344,34 @@ def get_session_data(
 
     now = datetime.now(timezone.utc)
 
-    print("NOW:", now)
-    print("EXPIRES:", expires_at)
-
-    # ✅ compare timestamps directly
     if expires_at.timestamp() < now.timestamp():
 
         menu_session.is_active = False
-        db.commit()
+
+        await db.commit()
 
         raise HTTPException(
             status_code=401,
             detail="Session expired"
         )
 
-    business = db.query(Business).filter(
-        Business.id == menu_session.business_id
-    ).first()
+    result = await db.execute(
+        select(Business).where(
+            Business.id ==
+            menu_session.business_id
+        )
+    )
+
+    business = (
+        result.scalar_one_or_none()
+    )
 
     return {
-        "business_slug": business.slug,
-        "business_phone": business.business_phone
+        "business_slug":
+            business.slug,
+
+        "business_phone":
+            business.business_phone
     }
 
 @app.get("/test")
@@ -306,14 +382,26 @@ async def test():
     }
 
 @app.post("/api/checkout")
-def checkout(data: CheckoutRequest, db: Session = Depends(get_db)):
+async def checkout(
 
-    menu_session = db.query(MenuSession).filter(
+    data: CheckoutRequest,
 
-        MenuSession.session_token
-        == data.session_token
+    db: AsyncSession = Depends(
+        get_db
+    )
+):
 
-    ).first()
+    result = await db.execute(
+        select(MenuSession).where(
+
+            MenuSession.session_token
+            == data.session_token
+        )
+    )
+
+    menu_session = (
+        result.scalar_one_or_none()
+    )
 
     if not menu_session:
 
@@ -322,66 +410,135 @@ def checkout(data: CheckoutRequest, db: Session = Depends(get_db)):
             detail="Invalid session"
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(
+        timezone.utc
+    )
 
-    expires_at = menu_session.expires_at
+    expires_at = (
+        menu_session.expires_at
+    )
 
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if (
+        expires_at.tzinfo
+        is None
+    ):
+        expires_at = (
+            expires_at.replace(
+                tzinfo=
+                timezone.utc
+            )
+        )
     else:
-        expires_at = expires_at.astimezone(timezone.utc)
+        expires_at = (
+            expires_at
+            .astimezone(
+                timezone.utc
+            )
+        )
 
     if expires_at < now:
+
         raise HTTPException(
             status_code=400,
             detail="Session expired"
         )
 
-    phone = menu_session.phone
+    phone = (
+        menu_session.phone
+    )
 
-    business = db.query(Business).filter(
+    result = await db.execute(
+        select(Business).where(
+            Business.id
+            ==
+            menu_session
+            .business_id
+        )
+    )
 
-        Business.id ==
-        menu_session.business_id
+    business = (
+        result.scalar_one_or_none()
+    )
 
-    ).first()
+    result = await db.execute(
+        select(User).where(
+            User.phone
+            == phone
+        )
+    )
 
-    user = db.query(User).filter(
-        User.phone == phone
-    ).first()
+    user = (
+        result.scalar_one_or_none()
+    )
 
     total = 0
 
-    for item_name, qty in data.items.items():
+    for (
+        item_name,
+        qty
+    ) in data.items.items():
 
-        menu_item = db.query(MenuItem).filter(
-            MenuItem.name == item_name,
-            MenuItem.business_id == business.id
-        ).first()
+        result = await db.execute(
+            select(MenuItem).where(
+
+                MenuItem.name
+                == item_name,
+
+                MenuItem.business_id
+                == business.id
+            )
+        )
+
+        menu_item = (
+            result.scalar_one_or_none()
+        )
 
         if menu_item:
-            total += float(menu_item.price) * qty
+
+            total += (
+                float(
+                    menu_item.price
+                )
+                * qty
+            )
 
     import json
 
-    user.pending_order = json.dumps({
-        "items": data.items,
-        "total_price": str(total),
-        "business_id": int(business.id)
-    })
+    user.pending_order = (
+        json.dumps({
+            "items":
+                data.items,
 
-    db.commit()
+            "total_price":
+                str(total),
 
-    payment_link = create_payment_link(
-        amount=total,
-        phone=phone,
-        customer_name=user.customer_name
+            "business_id":
+                int(
+                    business.id
+                )
+        })
+    )
+
+    await db.commit()
+
+    payment_link = (
+        create_payment_link(
+
+            amount=total,
+
+            phone=phone,
+
+            customer_name=
+                user.customer_name
+        )
     )
 
     return {
-        "payment_url": payment_link[
-            "short_url"
-        ]
+
+        "payment_url":
+            payment_link[
+                "short_url"
+            ]
     }
 
 
@@ -389,14 +546,25 @@ def checkout(data: CheckoutRequest, db: Session = Depends(get_db)):
 @app.get(
     "/api/check-customer/{session_token}"
 )
-def check_customer(
+async def check_customer(
+
     session_token: str,
-    db: Session = Depends(get_db)
+
+    db: AsyncSession = Depends(
+        get_db
+    )
 ):
 
-    menu_session = db.query(MenuSession).filter(
-        MenuSession.session_token == session_token
-    ).first()
+    result = await db.execute(
+        select(MenuSession).where(
+            MenuSession.session_token
+            == session_token
+        )
+    )
+
+    menu_session = (
+        result.scalar_one_or_none()
+    )
 
     if not menu_session:
 
@@ -404,9 +572,16 @@ def check_customer(
             "has_name": False
         }
 
-    user = db.query(User).filter(
-        User.phone == menu_session.phone
-    ).first()
+    result = await db.execute(
+        select(User).where(
+            User.phone
+            == menu_session.phone
+        )
+    )
+
+    user = (
+        result.scalar_one_or_none()
+    )
 
     if not user:
 
@@ -415,41 +590,52 @@ def check_customer(
         }
 
     return {
-        "has_name": bool(user.customer_name)
+        "has_name":
+            bool(
+                user.customer_name
+            )
     }
 
+
 @app.post("/api/save-customer-name")
-def save_customer_name(
+async def save_customer_name(
     request: SaveCustomerNameRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
-    menu_session = db.query(MenuSession).filter(
-        MenuSession.session_token
-        == request.session_token
-    ).first()
+    result = await db.execute(
+        select(MenuSession).where(
+            MenuSession.session_token
+            == request.session_token
+        )
+    )
+
+    menu_session = result.scalar_one_or_none()
 
     if not menu_session:
-
         return {
             "success": False
         }
 
-    user = db.query(User).filter(
-        User.phone == menu_session.phone
-    ).first()
+    result = await db.execute(
+        select(User).where(
+            User.phone == menu_session.phone
+        )
+    )
+
+    user = result.scalar_one_or_none()
 
     if not user:
-
         return {
             "success": False
         }
 
-    user.customer_name = request.customer_name
+    user.customer_name = (
+        request.customer_name
+    )
 
-    db.commit()
+    await db.commit()
 
     return {
         "success": True
     }
-

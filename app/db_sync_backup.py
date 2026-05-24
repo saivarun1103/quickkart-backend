@@ -21,7 +21,7 @@ ASYNC_DATABASE_URL = DATABASE_URL.replace(
 
 
 # -------------------------
-# ENGINE (Singleton)
+# SINGLETON ENGINE
 # -------------------------
 
 engine = create_async_engine(
@@ -49,25 +49,30 @@ SessionLocal = async_sessionmaker(
     class_=AsyncSession,
 
     autoflush=False,
+    autocommit=False,
+
     expire_on_commit=False
 )
 
 
 # -------------------------
-# BASE
+# BASE MODEL
 # -------------------------
 
 Base = declarative_base()
 
 
 # -------------------------
-# FASTAPI DB DEPENDENCY
+# FASTAPI DEPENDENCY
 # -------------------------
 
 async def get_db():
 
     async with SessionLocal() as db:
-        yield db
+        try:
+            yield db
+        finally:
+            await db.close()
 
 
 # -------------------------
@@ -78,43 +83,51 @@ async def get_db():
 async def get_db_context():
 
     async with SessionLocal() as db:
+        try:
+            yield db
+        finally:
+            await db.close()
+
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+from app.config import DATABASE_URL
+from contextlib import contextmanager
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True
+)
+
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
+
+
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
         yield db
+    finally:
+        db.close()
 
-# from sqlalchemy import create_engine
-# from sqlalchemy.orm import sessionmaker, declarative_base
-# from app.config import DATABASE_URL
-# from contextlib import contextmanager
-
-# engine = create_engine(
-#     DATABASE_URL,
-#     pool_size=10,
-#     max_overflow=20,
-#     pool_timeout=30,
-#     pool_recycle=1800,
-#     pool_pre_ping=True
-# )
+@contextmanager
+def get_db_context():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-# SessionLocal = sessionmaker(
-#     autocommit=False,
-#     autoflush=False,
-#     bind=engine
-# )
 
 
-# Base = declarative_base()
-
-# def get_db():
-#     db = SessionLocal()
-#     try:
-#         yield db
-#     finally:
-#         db.close()
-
-# @contextmanager
-# def get_db_context():
-#     db = SessionLocal()
-#     try:
-#         yield db
-#     finally:
-#         db.close()

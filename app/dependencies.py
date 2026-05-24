@@ -5,17 +5,18 @@ from fastapi import (
 )
 
 from app.auth import decode_token
-
 from app.db import get_db
-
 from app.models import Business
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import (
+    AsyncSession
+)
 
 
-def get_current_business(
+async def get_current_business(
     authorization: str = Header(None),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
     # ❌ Missing header
@@ -59,9 +60,16 @@ def get_current_business(
             detail="Missing business_id"
         )
 
-    business = db.query(Business).filter(
-        Business.id == business_id
-    ).first()
+    result = await db.execute(
+        select(Business).where(
+            Business.id == business_id
+        )
+    )
+
+    business = (
+        result.scalar_one_or_none()
+    )
+
 
     if not business:
         raise HTTPException(

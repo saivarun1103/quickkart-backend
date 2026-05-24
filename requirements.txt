@@ -11,3 +11,4 @@ cloudinary
 python-jose[cryptography]
 razorpay
 pydantic[email]
+asyncpg

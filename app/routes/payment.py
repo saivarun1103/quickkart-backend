@@ -1,5 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import (
+    AsyncSession
+)
+
+from sqlalchemy import select
 
 from app.db import get_db
 from app.models import Order, Payment
@@ -18,10 +22,14 @@ from app.services.whatsapp import send_text
 router = APIRouter()
 
 
-@router.post("/create-razorpay-order")
-def create_payment_order(
+@router.post(
+    "/create-razorpay-order"
+)
+async def create_payment_order(
     data: dict,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(
+        get_db
+    )
 ):
 
     import random
@@ -33,23 +41,47 @@ def create_payment_order(
     while True:
 
         pin = str(
-            random.randint(1000, 9999)
+            random.randint(
+                1000,
+                9999
+            )
         )
 
-        existing = db.query(Order).filter(
-            Order.pickup_pin == pin
-        ).first()
+        result = await db.execute(
+            select(Order).where(
+                Order.pickup_pin
+                == pin
+            )
+        )
+
+        existing = (
+            result.scalars()
+            .first()
+        )
 
         if not existing:
             break
 
-    session = db.query(MenuSession).filter(
+    # -------------------------
+    # GET SESSION
+    # -------------------------
 
-        MenuSession.session_token == data["session_token"],
+    result = await db.execute(
+        select(MenuSession).where(
 
-        MenuSession.is_active == True
+            MenuSession.session_token
+            == data[
+                "session_token"
+            ],
 
-    ).first()
+            MenuSession.is_active
+            == True
+        )
+    )
+
+    session = (
+        result.scalar_one_or_none()
+    )
 
     if not session:
 
@@ -58,77 +90,100 @@ def create_payment_order(
             detail="Session expired"
         )
 
-    customer_phone = session.phone
+    customer_phone = (
+        session.phone
+    )
 
     # -------------------------
     # FETCH USER
     # -------------------------
 
-    user = db.query(User).filter(
+    result = await db.execute(
+        select(User).where(
+            User.phone
+            == customer_phone
+        )
+    )
 
-        User.phone == customer_phone
-
-    ).first()
+    user = (
+        result.scalar_one_or_none()
+    )
 
     customer_name = (
 
         user.customer_name
 
-        if user and user.customer_name
+        if user and
+        user.customer_name
 
         else "Customer"
-)
+    )
 
     # -------------------------
-    # CREATE ORDER FIRST
+    # CREATE ORDER
     # -------------------------
 
     order = Order(
 
-        phone=customer_phone,
+        phone=
+            customer_phone,
 
         customer_name=
             customer_name,
 
-        items=data["items"],
+        items=
+            data["items"],
 
-        total_price=data["total"],
+        total_price=
+            data["total"],
 
-        pickup_pin=pin,
+        pickup_pin=
+            pin,
 
-        status="payment_pending",
+        status=
+            "payment_pending",
 
-        payment_status="pending",
+        payment_status=
+            "pending",
 
-        business_id=data["business_id"],
+        business_id=
+            data[
+                "business_id"
+            ],
 
-        session_token=data["session_token"]
+        session_token=
+            data[
+                "session_token"
+            ]
     )
 
     db.add(order)
 
-    db.commit()
+    await db.commit()
 
-    db.refresh(order)
+    await db.refresh(
+        order
+    )
 
     # -------------------------
     # CREATE RAZORPAY ORDER
     # -------------------------
 
-    razorpay_order = create_razorpay_order(
+    razorpay_order = (
+        create_razorpay_order(
 
-        amount=data["total"],
+            amount=
+                data["total"],
 
-        receipt=f"order_{order.id}"
+            receipt=
+                f"order_{order.id}"
+        )
     )
-
-    # -------------------------
-    # RETURN DATA
-    # -------------------------
 
     return {
 
-        "success": True,
+        "success":
+            True,
 
         "order_id":
             order.id,
@@ -140,64 +195,87 @@ def create_payment_order(
             razorpay_order["id"],
 
         "amount":
-            razorpay_order["amount"],
+            razorpay_order[
+                "amount"
+            ],
 
         "key":
             RAZORPAY_KEY_ID
     }
 
 
-@router.post("/verify-payment")
-def verify_payment(
+@router.post(
+    "/verify-payment"
+)
+async def verify_payment(
     data: dict,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(
+        get_db
+    )
 ):
 
-    order = db.query(Order).filter(
+    result = await db.execute(
+        select(Order).where(
+            Order.id
+            == data["order_id"]
+        )
+    )
 
-        Order.id == data["order_id"]
-
-    ).first()
+    order = (
+        result.scalar_one_or_none()
+    )
 
     if not order:
 
         return {
 
-            "success": False,
+            "success":
+                False,
 
-            "message": "Order not found"
+            "message":
+                "Order not found"
         }
 
     # -------------------------
     # VERIFY SIGNATURE
     # -------------------------
 
-    generated_signature = hmac.new(
+    generated_signature = (
+        hmac.new(
 
-        bytes(
-            RAZORPAY_KEY_SECRET,
-            "utf-8"
-        ),
+            bytes(
+                RAZORPAY_KEY_SECRET,
+                "utf-8"
+            ),
 
-        bytes(
+            bytes(
 
-            f"{data['razorpay_order_id']}|"
-            f"{data['razorpay_payment_id']}",
+                f"{data['razorpay_order_id']}|"
+                f"{data['razorpay_payment_id']}",
 
-            "utf-8"
-        ),
+                "utf-8"
+            ),
 
-        hashlib.sha256
+            hashlib.sha256
 
-    ).hexdigest()
+        ).hexdigest()
+    )
 
-    if generated_signature != data["razorpay_signature"]:
+    if (
+        generated_signature
+        !=
+        data[
+            "razorpay_signature"
+        ]
+    ):
 
         return {
 
-            "success": False,
+            "success":
+                False,
 
-            "message": "Invalid signature"
+            "message":
+                "Invalid signature"
         }
 
     # -------------------------
@@ -206,47 +284,69 @@ def verify_payment(
 
     order.status = "pending"
 
-    order.payment_status = "paid"
+    order.payment_status = (
+        "paid"
+    )
+
+    order.payment_id = data[
+        "razorpay_payment_id"
+    ]
 
     # -------------------------
-    # SAVE PAYMENT ROW
+    # SAVE PAYMENT
     # -------------------------
 
     payment = Payment(
 
-        order_id=order.id,
+        order_id=
+            order.id,
 
-        business_id=order.business_id,
+        business_id=
+            order.business_id,
 
-        phone=order.phone,
+        phone=
+            order.phone,
 
-        customer_name=order.customer_name,
+        customer_name=
+            order.customer_name,
 
         razorpay_payment_id=
-            data["razorpay_payment_id"],
+            data[
+                "razorpay_payment_id"
+            ],
 
-        amount=order.total_price,
+        amount=
+            order.total_price,
 
-        status="captured",
+        status=
+            "captured",
 
-        payment_method="online"
+        payment_method=
+            "online"
     )
 
     db.add(payment)
 
     # -------------------------
-    # End Session
+    # END SESSION
     # -------------------------
 
-    menu_session = db.query(MenuSession).filter(
-        MenuSession.session_token == order.session_token
-    ).first()
+    result = await db.execute(
+        select(MenuSession).where(
+            MenuSession.session_token
+            == order.session_token
+        )
+    )
+
+    menu_session = (
+        result.scalar_one_or_none()
+    )
 
     if menu_session:
         menu_session.is_active = False
 
     # -------------------------
-    # SEND WHATSAPP MESSAGE
+    # SEND MESSAGE
     # -------------------------
 
     send_text(
@@ -255,22 +355,21 @@ def verify_payment(
 
         f"✅ Payment successful!\n\n"
 
-        f"🧾 Order #{order.id}\n"
+        f"🧾 Order "
+        f"#{order.id}\n"
 
-        f"💰 Amount Paid: ₹{order.total_price}\n\n"
+        f"💰 Amount Paid: "
+        f"₹{order.total_price}\n\n"
 
-        f"🔐 Pickup PIN: {order.pickup_pin}\n\n"
+        f"🔐 Pickup PIN: "
+        f"{order.pickup_pin}\n\n"
 
-        f"Use this PIN while picking up your order."
+        f"Use this PIN while "
+        f"picking up your order."
     )
 
-    order.payment_id = data[
-        "razorpay_payment_id"
-    ]
-
-    db.commit()
+    await db.commit()
 
     return {
-
         "success": True
     }

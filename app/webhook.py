@@ -4,7 +4,11 @@ from app.services.whatsapp import send_menu_link, send_text
 from app.services.orderParser import parse_order, calculate_total
 from app.db import get_db
 from app.models import User, Order, MenuItem, Payment, MenuSession, Business
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import (
+    AsyncSession
+)
+
+from sqlalchemy import select
 from fastapi import Depends
 from app.services.razorpay_service import (
     create_payment_link
@@ -52,7 +56,7 @@ async def verify(request: Request):
 async def receive_message(
     request: Request,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     data = await request.json()
 
@@ -71,16 +75,25 @@ async def receive_message(
             print("Text:", text)
 
             # ✅ Get or create user
-            user = db.query(User).filter(User.phone == phone).first()
+            result = await db.execute(
+                select(User).where(
+                    User.phone == phone
+                )
+            )
+
+            user = result.scalar_one_or_none()
 
             if not user:
-                
+
                 user = User(
                     phone=phone
                 )
+
                 db.add(user)
-                db.commit()
-                db.refresh(user)
+
+                await db.commit()
+
+                await db.refresh(user)
 
             if text:
                 text = text.lower().strip()
@@ -97,7 +110,7 @@ async def receive_message(
 
                     user.state = None
 
-                    db.commit()
+                    await db.commit()
 
                     # ✅ Continue original order automatically
                     text = pending_order
@@ -112,19 +125,38 @@ async def receive_message(
 
                     business_slug = business_slug
 
-                    business = db.query(Business).filter(
-                        Business.slug == business_slug
-                    ).first()
+                    result = await db.execute(
+                        select(Business).where(
+                            Business.slug
+                            == business_slug
+                        )
+                    )
 
-                    existing_sessions = db.query(
-                        MenuSession
-                    ).filter(
-                        MenuSession.phone == phone,
-                        MenuSession.business_id == business.id,
-                        MenuSession.is_active == True
-                    ).order_by(
-                        MenuSession.created_at.desc()
-                    ).all()
+                    business = (
+                        result.scalar_one_or_none()
+                    )
+
+                    result = await db.execute(
+                        select(MenuSession)
+                        .where(
+                            MenuSession.phone
+                            == phone,
+
+                            MenuSession.business_id
+                            == business.id,
+
+                            MenuSession.is_active
+                            == True
+                        )
+                        .order_by(
+                            MenuSession.created_at
+                            .desc()
+                        )
+                    )
+
+                    existing_sessions = (
+                        result.scalars().all()
+                    )
 
                     existing_session = None
                     now = datetime.now(timezone.utc)
@@ -145,13 +177,13 @@ async def receive_message(
                             datetime.now(timezone.utc)
                         )
 
-                        db.commit()
+                        await db.commit()
 
                         menu_link = (
 
-                            f"https://quickkart-frontend-beta.vercel.app"
+                            # f"https://quickkart-frontend-beta.vercel.app"
                             # f"https://collins-powered-darleen.ngrok-free.dev"
-                            # f"https://192.168.0.106:5173"
+                            f"http://192.168.0.106:5173"
 
                             f"/{business.slug}/m/"
                             f"{existing_session.session_token}"
@@ -188,13 +220,13 @@ async def receive_message(
                     )
                     db.add(menu_session)
 
-                    db.commit()
+                    await db.commit()
 
                     menu_link = (
 
-                        f"https://quickkart-frontend-beta.vercel.app"  
+                        # f"https://quickkart-frontend-beta.vercel.app"  
                         # f"https://collins-powered-darleen.ngrok-free.dev"
-                        # f"https://192.168.0.106:5173"
+                        f"http://192.168.0.106:5173"
 
                         f"/{business.slug}/m/{session_token}"
                     )
@@ -223,9 +255,16 @@ async def receive_message(
                     response_msg = ""
 
                     # ✅ Fetch menu once
-                    menu_items = db.query(MenuItem).filter(
-                        MenuItem.is_active == True
-                    ).all()
+                    result = await db.execute(
+                        select(MenuItem).where(
+                            MenuItem.is_active
+                            == True
+                        )
+                    )
+
+                    menu_items = (
+                        result.scalars().all()
+                    )
 
                     menu_map = {
                         item.name.lower(): item
@@ -267,7 +306,7 @@ async def receive_message(
 
                         user.pending_order = text
 
-                        db.commit()
+                        await db.commit()
 
                         background_tasks.add_task(
                             send_text,
@@ -287,7 +326,7 @@ async def receive_message(
 
                     user.state = "awaiting_confirmation"
 
-                    db.commit()
+                    await db.commit()
 
                     # ✅ Confirmation message
                     response_msg += f"\n💰 Total: ₹{total}\n\n"
@@ -350,7 +389,7 @@ async def receive_message(
 
                         user.state = "awaiting_payment"
 
-                        db.commit()
+                        await db.commit()
 
                         return {"status": "ok"}
                         
@@ -359,7 +398,7 @@ async def receive_message(
                         user.pending_order = None
                         user.state = None
 
-                        db.commit()
+                        await db.commit()
 
                         background_tasks.add_task(
                             send_text,
@@ -368,7 +407,7 @@ async def receive_message(
                         )
 
                     user.state = None
-                    db.commit()
+                    await db.commit()
 
                 # -------------------------
                 # ✅ UNKNOWN INPUT
@@ -384,7 +423,7 @@ async def receive_message(
             # ✅ UPDATE LAST MESSAGE TIME
             # -------------------------
             user.last_message_time = datetime.now(timezone.utc)
-            db.commit()
+            await db.commit()
 
     except Exception as e:
         print("Error:", e)
@@ -608,51 +647,272 @@ async def receive_message(
 @router.post("/razorpay-webhook")
 async def razorpay_webhook(
     request: Request,
-    db: Session = Depends(get_db)
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
 ):
-
-    payload = await request.json()
 
     print("RAZORPAY WEBHOOK HIT")
 
+    payload = await request.json()
+
     event = payload.get("event")
 
-    if event != "payment.captured":
+    print("EVENT:", event)
 
-        return {"status": "ignored"}
-
-    payment_entity = payload["payload"]["payment"]["entity"]
-
-    razorpay_payment_id = payment_entity["id"]
-
-    razorpay_order_id = payment_entity["order_id"]
-
-    # -------------------------
-    # FIND ORDER
-    # -------------------------
-
-    order = db.query(Order).filter(
-
-        Order.payment_id == razorpay_payment_id
-
-    ).first()
-
-    # Already processed
-    if order:
-
+    if event not in [
+        "payment.captured",
+        "payment_link.paid"
+    ]:
         return {
-            "status": "already_processed"
+            "status": "ignored"
         }
 
-    # -------------------------
-    # OPTIONAL FALLBACK LOGIC
-    # -------------------------
+    payment_entity = payload[
+        "payload"
+    ]["payment"]["entity"]
 
-    print(
-        "Webhook received payment:",
-        razorpay_payment_id
+    razorpay_payment_id = (
+        payment_entity["id"]
     )
 
-    return {
-        "status": "ok"
-    }
+    amount = (
+        payment_entity["amount"]
+        // 100
+    )
+
+    payment_method = (
+        payment_entity["method"]
+    )
+
+    notes = payment_entity.get(
+        "notes",
+        {}
+    )
+
+    if not isinstance(
+        notes,
+        dict
+    ):
+        return {
+            "success": True
+        }
+
+    phone = notes.get(
+        "phone"
+    )
+
+    if not phone:
+        return {
+            "status":
+                "phone_missing"
+        }
+
+    try:
+
+        # -------------------------
+        # FIND USER
+        # -------------------------
+
+        result = await db.execute(
+            select(User).where(
+                User.phone
+                == phone
+            )
+        )
+
+        user = (
+            result.scalar_one_or_none()
+        )
+
+        if not user:
+            return {
+                "status":
+                    "user_not_found"
+            }
+
+        if not user.pending_order:
+            return {
+                "status":
+                    "no_pending_order"
+            }
+
+        import json
+        import random
+
+        pending_data = json.loads(
+            user.pending_order
+        )
+
+        # -------------------------
+        # GENERATE UNIQUE PIN
+        # -------------------------
+
+        while True:
+
+            generated_pin = str(
+                random.randint(
+                    100000,
+                    999999
+                )
+            )
+
+            result = await db.execute(
+                select(Order).where(
+
+                    Order.business_id
+                    == pending_data[
+                        "business_id"
+                    ],
+
+                    Order.pickup_pin
+                    == generated_pin,
+
+                    Order.status.in_([
+                        "pending",
+                        "preparing",
+                        "ready"
+                    ])
+                )
+            )
+
+            existing_order = (
+                result.scalars()
+                .first()
+            )
+
+            if not existing_order:
+                break
+
+        # -------------------------
+        # CREATE ORDER
+        # -------------------------
+
+        new_order = Order(
+
+            phone=phone,
+
+            customer_name=
+                user.customer_name,
+
+            items=
+                pending_data["items"],
+
+            total_price=int(
+                float(
+                    pending_data[
+                        "total_price"
+                    ]
+                )
+            ),
+
+            pickup_pin=
+                generated_pin,
+
+            status="pending",
+
+            business_id=
+                pending_data[
+                    "business_id"
+                ],
+
+            payment_status=
+                "paid",
+
+            payment_id=
+                razorpay_payment_id
+        )
+
+        db.add(new_order)
+
+        await db.commit()
+
+        await db.refresh(
+            new_order
+        )
+
+        # -------------------------
+        # CREATE PAYMENT
+        # -------------------------
+
+        payment = Payment(
+
+            order_id=
+                new_order.id,
+
+            business_id=
+                pending_data[
+                    "business_id"
+                ],
+
+            phone=phone,
+
+            customer_name=
+                user.customer_name,
+
+            razorpay_payment_id=
+                razorpay_payment_id,
+
+            amount=amount,
+
+            status="captured",
+
+            payment_method=
+                payment_method
+        )
+
+        db.add(payment)
+
+        # -------------------------
+        # CLEAR USER STATE
+        # -------------------------
+
+        user.pending_order = None
+        user.state = None
+
+        await db.commit()
+
+        # -------------------------
+        # SEND SUCCESS MESSAGE
+        # -------------------------
+
+        background_tasks.add_task(
+
+            send_text,
+
+            phone,
+
+            f"✅ Payment successful!\n\n"
+
+            f"🧾 Order "
+            f"#{new_order.id}\n"
+
+            f"💰 Amount Paid: "
+            f"₹{amount}\n\n"
+
+            f"🔐 Pickup PIN: "
+            f"{generated_pin}\n\n"
+
+            f"Use this PIN while "
+            f"picking up your order."
+        )
+
+        print(
+            "ORDER CREATED"
+        )
+
+        return {
+            "status":
+                "success"
+        }
+
+    except Exception as e:
+
+        print(
+            "WEBHOOK ERROR:",
+            e
+        )
+
+        return {
+            "status":
+                "error"
+        }

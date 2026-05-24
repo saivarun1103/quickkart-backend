@@ -2,6 +2,7 @@ from app.config import PHONE_NUMBER_ID,ACCESS_TOKEN
 from app.models import User
 import requests
 from app.db import get_db_context
+from sqlalchemy import select
 
 
 # def send_templete(phone: str, name: str, menu: str):
@@ -74,42 +75,73 @@ from app.db import get_db_context
 #     return response.json()
 
 
-def send_menu_link(phone, link):
-    with get_db_context() as db:
-        user = db.query(User).filter(
-            User.phone == phone
-        ).first()
+async def send_menu_link(
+    phone,
+    link
+):
+
+    async with get_db_context() as db:
+
+        result = await db.execute(
+            select(User).where(
+                User.phone == phone
+            )
+        )
+
+        user = (
+            result.scalar_one_or_none()
+        )
+
         url = (
             f"https://graph.facebook.com/v19.0/"
             f"{PHONE_NUMBER_ID}/messages"
         )
+
         headers = {
-            "Authorization": f"Bearer {ACCESS_TOKEN}",
-            "Content-Type": "application/json"
+            "Authorization":
+                f"Bearer {ACCESS_TOKEN}",
+
+            "Content-Type":
+                "application/json"
         }
+
         data = {
-            "messaging_product": "whatsapp",
-            "to": phone,
-            "type": "text",
+            "messaging_product":
+                "whatsapp",
+
+            "to":
+                phone,
+
+            "type":
+                "text",
+
             "text": {
                 "body": (
-                    f"Hi {user.customer_name}, here is the menu:\n{link}"
-                    if user and user.customer_name
-                    else f"Hi, here is the menu:\n{link}"
+                    f"Hi {user.customer_name}, "
+                    f"here is the menu:\n{link}"
+
+                    if user and
+                    user.customer_name
+
+                    else
+                    f"Hi, here is the menu:\n{link}"
                 )
             }
         }
+
         response = requests.post(
             url,
             headers=headers,
             json=data,
             timeout=10
         )
+
         print(
             "MENU RESPONSE:",
             response.status_code,
             response.text
         )
+
         return response.json()
 
 
