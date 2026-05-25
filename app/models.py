@@ -32,6 +32,12 @@ class Order(Base):
         nullable=False
     )
     session_token = Column(String, nullable=True)
+    access_token = Column(
+        String,
+        unique=True,
+        index=True,
+        nullable=True
+    )
 
 class MenuItem(Base):
     __tablename__ = "menu_items"

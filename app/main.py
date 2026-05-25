@@ -56,8 +56,8 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["https://quickkart-frontend-beta.vercel.app"],
-    allow_origins=origins,
+    allow_origins=["https://quickkart-frontend-beta.vercel.app"],
+    # allow_origins=origins,
     # allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
@@ -68,8 +68,14 @@ class SaveCustomerNameRequest(BaseModel):
     session_token: str
     customer_name: str
 
+class CheckPhoneRequest(BaseModel):
+    phone: str
+
 class CheckoutRequest(BaseModel):
-    session_token: str
+    session_token: str | None = None
+    business_slug: str | None = None
+    phone: str | None = None
+    customer_name: str | None = None
     items: dict
 
 ##Menu page
@@ -391,85 +397,156 @@ async def checkout(
     )
 ):
 
-    result = await db.execute(
-        select(MenuSession).where(
+    # -------------------------
+    # SESSION CHECKOUT
+    # -------------------------
 
-            MenuSession.session_token
-            == data.session_token
-        )
-    )
+    if data.session_token:
 
-    menu_session = (
-        result.scalar_one_or_none()
-    )
-
-    if not menu_session:
-
-        raise HTTPException(
-            status_code=404,
-            detail="Invalid session"
-        )
-
-    now = datetime.now(
-        timezone.utc
-    )
-
-    expires_at = (
-        menu_session.expires_at
-    )
-
-    if (
-        expires_at.tzinfo
-        is None
-    ):
-        expires_at = (
-            expires_at.replace(
-                tzinfo=
-                timezone.utc
+        result = await db.execute(
+            select(MenuSession).where(
+                MenuSession.session_token
+                == data.session_token
             )
         )
+
+        menu_session = (
+            result.scalar_one_or_none()
+        )
+
+        if not menu_session:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Invalid session"
+            )
+
+        now = datetime.now(
+            timezone.utc
+        )
+
+        expires_at = (
+            menu_session.expires_at
+        )
+
+        if expires_at.tzinfo is None:
+
+            expires_at = (
+                expires_at.replace(
+                    tzinfo=timezone.utc
+                )
+            )
+
+        if expires_at < now:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Session expired"
+            )
+
+        phone = (
+            menu_session.phone
+        )
+
+        result = await db.execute(
+            select(Business).where(
+                Business.id
+                ==
+                menu_session.business_id
+            )
+        )
+
+        business = (
+            result.scalar_one_or_none()
+        )
+
+        result = await db.execute(
+            select(User).where(
+                User.phone
+                == phone
+            )
+        )
+
+        user = (
+            result.scalar_one_or_none()
+        )
+
+    # -------------------------
+    # PUBLIC CHECKOUT
+    # -------------------------
+
     else:
-        expires_at = (
-            expires_at
-            .astimezone(
-                timezone.utc
+
+        if not data.business_slug:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Business slug required"
+            )
+
+        if not data.phone:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Phone required"
+            )
+
+        # normalize phone
+        phone = data.phone.strip()
+        phone = phone.replace(" ", "")
+
+        if len(phone) == 10:
+            phone = "91" + phone
+
+        result = await db.execute(
+            select(Business).where(
+                Business.slug
+                == data.business_slug
             )
         )
 
-    if expires_at < now:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Session expired"
+        business = (
+            result.scalar_one_or_none()
         )
 
-    phone = (
-        menu_session.phone
-    )
+        if not business:
 
-    result = await db.execute(
-        select(Business).where(
-            Business.id
-            ==
-            menu_session
-            .business_id
+            raise HTTPException(
+                status_code=404,
+                detail="Business not found"
+            )
+
+        result = await db.execute(
+            select(User).where(
+                User.phone == phone
+            )
         )
-    )
 
-    business = (
-        result.scalar_one_or_none()
-    )
-
-    result = await db.execute(
-        select(User).where(
-            User.phone
-            == phone
+        user = (
+            result.scalar_one_or_none()
         )
-    )
 
-    user = (
-        result.scalar_one_or_none()
-    )
+        # create customer only if needed
+        if not user:
+
+            if not data.customer_name:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail="Customer name required"
+                )
+
+            user = User(
+                phone=phone,
+                customer_name=
+                    data.customer_name
+            )
+
+            db.add(user)
+
+            await db.commit()
+
+            await db.refresh(user)
 
     total = 0
 
@@ -638,4 +715,37 @@ async def save_customer_name(
 
     return {
         "success": True
+    }
+
+
+@app.post("/api/check-phone")
+async def check_phone(
+    data: CheckPhoneRequest,
+    db: AsyncSession = Depends(get_db)
+):
+
+    phone = data.phone.strip()
+    phone = phone.replace(" ", "")
+
+    if len(phone) == 10:
+        phone = "91" + phone
+
+    result = await db.execute(
+        select(User).where(
+            User.phone == phone
+        )
+    )
+
+    user = result.scalar_one_or_none()
+
+    if user:
+
+        return {
+            "exists": True,
+            "customer_name":
+                user.customer_name
+        }
+
+    return {
+        "exists": False
     }

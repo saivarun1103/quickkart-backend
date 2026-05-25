@@ -3,40 +3,31 @@ from sqlalchemy.ext.asyncio import (
     AsyncSession
 )
 
-from sqlalchemy import select
+from sqlalchemy import (
+    select,
+    or_
+)
 
 from app.db import get_db
-from app.models import Order, MenuItem
+from app.models import (
+    Order,
+    MenuItem,
+    Business
+)
 
 router = APIRouter()
 
 @router.get(
-    "/public/order/{combined}"
+    "/public/order/{token}"
 )
 async def get_public_order(
 
-    combined: str,
+    token: str,
 
     db: AsyncSession = Depends(
         get_db
     )
 ):
-
-    if ":::" not in combined:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized"
-        )
-
-    session_token, order_id = (
-        combined.rsplit(
-            ":::",
-            1
-        )
-    )
-
-    order_id = int(order_id)
 
     # -------------------------
     # GET ORDER
@@ -45,11 +36,8 @@ async def get_public_order(
     result = await db.execute(
         select(Order).where(
 
-            Order.id
-            == order_id,
-
-            Order.session_token
-            == session_token
+            Order.access_token
+            == token
         )
     )
 
@@ -141,3 +129,108 @@ async def get_public_order(
                 order.created_at
         }
     }
+
+@router.get(
+    "/public/business/search"
+)
+async def search_businesses(
+
+    q: str,
+
+    db: AsyncSession = Depends(
+        get_db
+    )
+):
+
+    result = await db.execute(
+
+        select(Business).where(
+
+            or_(
+
+                Business.name.ilike(
+                    f"%{q}%"
+                ),
+
+                Business.business_phone.ilike(
+                    f"%{q}%"
+                )
+
+            )
+
+        )
+
+    )
+
+    businesses = (
+        result
+        .scalars()
+        .all()
+    )
+
+    return [
+
+        {
+            "id": business.id,
+            "name": business.name,
+            "business_phone":
+                business.business_phone,
+            "slug": business.slug,
+            "logo_url":
+                business.logo_url
+        }
+
+        for business in businesses
+    ]
+
+@router.get("/public/test")
+async def public_test():
+    return {
+        "message": "public route working"
+    }
+
+@router.get(
+    "/public/business/popular"
+)
+async def get_popular_businesses(
+
+    db: AsyncSession = Depends(
+        get_db
+    )
+):
+
+    result = await db.execute(
+        select(Business)
+        .limit(10)
+    )
+
+    businesses = (
+        result
+        .scalars()
+        .all()
+    )
+
+    return [
+
+        {
+            "id":
+                business.id,
+
+            "name":
+                business.name,
+
+            "business_phone":
+                business.business_phone,
+
+            "slug":
+                business.slug,
+
+            "logo_url":
+                business.logo_url,
+
+            "business_type":
+                business.business_type
+        }
+
+        for business in businesses
+    ]

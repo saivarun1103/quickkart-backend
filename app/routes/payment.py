@@ -16,8 +16,13 @@ from app.config import (
     RAZORPAY_KEY_ID,
     RAZORPAY_KEY_SECRET
 )
-from app.models import MenuSession, User
+from app.models import (
+    MenuSession,
+    User,
+    Business
+)
 from app.services.whatsapp import send_text
+import secrets
 
 router = APIRouter()
 
@@ -63,36 +68,65 @@ async def create_payment_order(
             break
 
     # -------------------------
-    # GET SESSION
+    # SESSION FLOW
     # -------------------------
 
-    result = await db.execute(
-        select(MenuSession).where(
+    if data.get("session_token"):
 
-            MenuSession.session_token
-            == data[
-                "session_token"
-            ],
+        result = await db.execute(
+            select(MenuSession).where(
 
-            MenuSession.is_active
-            == True
-        )
-    )
+                MenuSession.session_token
+                == data["session_token"],
 
-    session = (
-        result.scalar_one_or_none()
-    )
-
-    if not session:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Session expired"
+                MenuSession.is_active
+                == True
+            )
         )
 
-    customer_phone = (
-        session.phone
-    )
+        session = (
+            result.scalar_one_or_none()
+        )
+
+        if not session:
+
+            raise HTTPException(
+                status_code=401,
+                detail="Session expired"
+            )
+
+        customer_phone = (
+            session.phone
+        )
+
+    # -------------------------
+    # PUBLIC FLOW
+    # -------------------------
+
+    else:
+
+        if not data.get("phone"):
+
+            raise HTTPException(
+                status_code=400,
+                detail="Phone required"
+            )
+
+        customer_phone = (
+            data["phone"]
+        )
+
+        # normalize
+        customer_phone = (
+            customer_phone
+            .strip()
+            .replace(" ", "")
+        )
+
+        if len(customer_phone) == 10:
+            customer_phone = (
+                "91" + customer_phone
+            )
 
     # -------------------------
     # FETCH USER
@@ -109,6 +143,39 @@ async def create_payment_order(
         result.scalar_one_or_none()
     )
 
+    # -------------------------
+    # CREATE NEW USER
+    # -------------------------
+
+    if not user:
+
+        if not data.get(
+            "customer_name"
+        ):
+
+            raise HTTPException(
+                status_code=400,
+                detail=
+                "Customer name required"
+            )
+
+        user = User(
+
+            phone=
+                customer_phone,
+
+            customer_name=
+                data[
+                    "customer_name"
+                ]
+        )
+
+        db.add(user)
+
+        await db.commit()
+
+        await db.refresh(user)
+
     customer_name = (
 
         user.customer_name
@@ -116,12 +183,17 @@ async def create_payment_order(
         if user and
         user.customer_name
 
-        else "Customer"
+        else data.get(
+            "customer_name",
+            "Customer"
+        )
     )
 
     # -------------------------
     # CREATE ORDER
     # -------------------------
+
+    access_token = secrets.token_urlsafe(16)
 
     order = Order(
 
@@ -152,9 +224,11 @@ async def create_payment_order(
             ],
 
         session_token=
-            data[
+            data.get(
                 "session_token"
-            ]
+            ),
+
+        access_token=access_token
     )
 
     db.add(order)
@@ -371,5 +445,8 @@ async def verify_payment(
     await db.commit()
 
     return {
-        "success": True
+
+        "success": True,
+
+        "access_token": order.access_token
     }
