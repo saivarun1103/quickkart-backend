@@ -181,9 +181,9 @@ async def receive_message(
 
                         menu_link = (
 
-                            # f"https://quickkart-frontend-beta.vercel.app"
+                            f"https://quickkart-frontend-beta.vercel.app"
                             # f"https://collins-powered-darleen.ngrok-free.dev"
-                            f"http://192.168.0.106:5173"
+                            # f"http://192.168.0.106:5173"
 
                             f"/{business.slug}/m/"
                             f"{existing_session.session_token}"
@@ -224,9 +224,9 @@ async def receive_message(
 
                     menu_link = (
 
-                        # f"https://quickkart-frontend-beta.vercel.app"  
+                        f"https://quickkart-frontend-beta.vercel.app"  
                         # f"https://collins-powered-darleen.ngrok-free.dev"
-                        f"http://192.168.0.106:5173"
+                        # f"http://192.168.0.106:5173"
 
                         f"/{business.slug}/m/{session_token}"
                     )
