@@ -67,10 +67,29 @@ class Business(Base):
     business_type = Column(String)
     slug = Column(String, unique=True)
     logo_url = Column(String, nullable=True)
+    banner_url = Column(
+        String,
+        nullable=True
+    )
     created_at = Column(DateTime, default=datetime.now)
     owner_name = Column(String)
     email = Column(String, unique=True)
     password_hash = Column(String)
+    pickup_verification_enabled = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+    is_open = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+    status = Column(
+        String,
+        default="open",
+        nullable=False
+    )
 
 class Payment(Base):
     __tablename__ = "payments"

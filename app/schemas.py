@@ -25,3 +25,20 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     identifier: str
     password: str
+
+class BusinessSettingsResponse(
+    BaseModel
+):
+    pickup_verification_enabled: bool
+    status: str
+    logo_url: str | None = None
+    banner_url: str | None = None
+
+
+class BusinessSettingsUpdate(
+    BaseModel
+):
+    pickup_verification_enabled: bool
+    status: str
+    logo_url: str | None = None
+    banner_url: str | None = None

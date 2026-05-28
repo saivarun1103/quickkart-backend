@@ -190,6 +190,37 @@ async def create_payment_order(
     )
 
     # -------------------------
+    # CHECK BUSINESS STATUS
+    # -------------------------
+
+    result = await db.execute(
+        select(Business).where(
+            Business.id
+            == data["business_id"]
+        )
+    )
+
+    business = (
+        result.scalar_one_or_none()
+    )
+
+    if not business:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Business not found"
+        )
+
+    if not business.is_open:
+
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Business is currently closed"
+            )
+        )
+
+    # -------------------------
     # CREATE ORDER
     # -------------------------
 
