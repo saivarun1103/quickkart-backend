@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Request, HTTPException, Depends
 from app.webhook import router
-from app.routes import public, payment
+from app.routes import (
+    payment,
+    public,
+    business_settings
+)
 from contextlib import asynccontextmanager
 from app.db import engine, get_db
 from app.models import Base, MenuItem, Business, User, MenuSession
@@ -41,6 +45,9 @@ app.include_router(
     payment.router,
     prefix="/api"
 )
+app.include_router(
+    business_settings.router
+)
 
 origins = [
     # "http://localhost:5173",
@@ -56,9 +63,9 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://quickkart-frontend-beta.vercel.app"],
+    # allow_origins=["https://quickkart-frontend-beta.vercel.app"],
     # allow_origins=origins,
-    # allow_origins=["*"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,7 +123,9 @@ async def get_menu(
             "id": business.id,
             "name": business.name,
             "logo_url": business.logo_url,
-            "slug": business.slug
+            "banner_url":business.banner_url,
+            "slug": business.slug,
+            "status": business.status
         },
 
         "items": [
@@ -282,6 +291,7 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=401,
             detail="Invalid credentials"
         )
+    
 
     # 🔒 Verify password
     valid_password = verify_password(

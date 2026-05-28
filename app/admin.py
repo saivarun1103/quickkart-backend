@@ -432,38 +432,46 @@ async def update_order_status(
     if not order:
 
         raise HTTPException(
-            404,
-            "Order not found"
+            status_code=404,
+            detail="Order not found"
         )
 
-    # Prevent changing locked orders
-    if order.status in [
+    # completed orders cannot change
+    if order.status == "completed":
+
+        raise HTTPException(
+            status_code=400,
+            detail="Order already completed"
+        )
+
+    # valid statuses
+    if status not in [
+        "preparing",
         "ready",
         "completed"
     ]:
 
         raise HTTPException(
             status_code=400,
-            detail="Order status is locked"
-        )
-
-    # Valid transitions
-    if status not in [
-        "preparing",
-        "ready"
-    ]:
-        raise HTTPException(
-            status_code=400,
             detail="Invalid status"
         )
 
+    # transition rules
     allowed_transitions = {
 
-        "pending": ["preparing"],
+        "pending": [
+            "preparing",
+            "completed"
+        ],
 
-        "preparing": ["ready"],
+        "preparing": [
+            "ready",
+            "completed"
+        ],
 
-        "ready": [],
+        "ready": [
+            "completed"
+        ],
 
         "completed": []
     }
@@ -479,8 +487,9 @@ async def update_order_status(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Cannot change status "
-                f"from {current_status} "
+                f"Cannot change "
+                f"status from "
+                f"{current_status} "
                 f"to {status}"
             )
         )
