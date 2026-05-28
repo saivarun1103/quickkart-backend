@@ -211,12 +211,14 @@ async def create_payment_order(
             detail="Business not found"
         )
 
-    if not business.is_open:
+    if business.status != "open":
 
         raise HTTPException(
             status_code=403,
+
             detail=(
-                "Business is currently closed"
+                "Business is currently "
+                f"{business.status}"
             )
         )
 
