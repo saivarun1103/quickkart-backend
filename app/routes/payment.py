@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import (
     AsyncSession
 )
@@ -316,6 +316,7 @@ async def create_payment_order(
 )
 async def verify_payment(
     data: dict,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(
         get_db
     )
@@ -456,9 +457,9 @@ async def verify_payment(
     # SEND MESSAGE
     # -------------------------
 
-    send_text(
+    background_tasks.add_task(
 
-        order.phone,
+        send_text,
 
         f"✅ Payment successful!\n\n"
 

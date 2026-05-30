@@ -525,7 +525,12 @@ async def update_order_status(
 @router.post("/verify-pickup")
 async def verify_pickup(
     data: PickupVerifyRequest,
-    db: AsyncSession = Depends(get_db)
+
+    db: AsyncSession = Depends(get_db),
+
+    business: Business = Depends(
+        get_current_business
+    )
 ):
 
     allowed_statuses = [
@@ -539,6 +544,9 @@ async def verify_pickup(
         .where(
             Order.pickup_pin
             == data.pickup_pin,
+
+            Order.business_id
+            == business.id,
 
             Order.status.in_(
                 allowed_statuses
@@ -564,20 +572,8 @@ async def verify_pickup(
     order.status = "completed"
 
     result = await db.execute(
-        select(Business).where(
-            Business.id
-            == order.business_id
-        )
-    )
-
-    business = (
-        result.scalar_one_or_none()
-    )
-
-    result = await db.execute(
         select(MenuSession)
         .where(
-
             MenuSession.phone
             == order.phone,
 
@@ -611,7 +607,6 @@ async def verify_pickup(
     )
 
     send_text(
-
         order.phone,
 
         f"🙏 Thank you "
@@ -623,12 +618,9 @@ async def verify_pickup(
     )
 
     return {
-
         "id": order.id,
-
         "customer_name":
             order.customer_name,
-
         "items":
             order.items
     }
