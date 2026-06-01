@@ -12,6 +12,10 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.now)
     customer_name = Column(String, default=None)
     pending_order = Column(Text)
+    whatsapp_updates_enabled = Column(
+        Boolean,
+        default=False
+    )
 
 class Order(Base):
     __tablename__ = "orders"
@@ -89,6 +93,20 @@ class Business(Base):
         String,
         default="open",
         nullable=False
+    )
+    location_name = Column(
+        String,
+        nullable=True
+    )
+
+    latitude = Column(
+        String,
+        nullable=True
+    )
+
+    longitude = Column(
+        String,
+        nullable=True
     )
 
 class Payment(Base):

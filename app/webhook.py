@@ -97,6 +97,40 @@ async def receive_message(
 
             if text:
                 text = text.lower().strip()
+
+                # -------------------------
+                # WHATSAPP UPDATES OPT-IN
+                # -------------------------
+
+                if (
+                    "receive updates"
+                    in text
+                    or
+                    "quickkart order"
+                    in text
+                ):
+
+                    user.whatsapp_updates_enabled = True
+
+                    await db.commit()
+
+                    background_tasks.add_task(
+
+                        send_text,
+
+                        phone,
+
+                        "✅ WhatsApp updates enabled!\n\n"
+                        "You will now receive:\n"
+                        "• Order confirmation\n"
+                        "• Order ready alerts\n"
+                        "• Pickup updates\n\n"
+                        "Thank you ❤️"
+                    )
+
+                    return {
+                        "status": "ok"
+                    }
                 
                 # -------------------------
                 # ✅ NAME COLLECTION

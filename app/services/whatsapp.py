@@ -163,3 +163,101 @@ def send_text(phone, message):
     }
 
     requests.post(url, headers=headers, json=data, timeout=10)
+
+
+def send_customer_order_confirmation(
+    phone: str,
+    customer_name: str,
+    business_name: str,
+    order_number: str,
+    amount: float,
+    order_link: str
+):
+
+    message = f"""
+✅ Order Confirmed
+
+Hi {customer_name},
+
+Your order has been confirmed at
+{business_name}
+
+🧾 Order No:
+{order_number}
+
+💰 Amount:
+₹{amount}
+
+Status:
+Preparing
+
+View Order:
+{order_link}
+
+We’ll notify you once it is ready for pickup.
+""".strip()
+
+    send_text(
+        phone=phone,
+        message=message
+    )
+
+
+def send_merchant_new_order(
+    phone: str,
+    business_name: str,
+    order_number: str,
+    amount: float,
+    items_text: str,
+    dashboard_link: str
+):
+
+    message = f"""
+🔔 NEW ORDER #{order_number}
+
+{business_name}
+
+₹{amount} | PREPAID
+
+{items_text}
+
+Open Dashboard:
+{dashboard_link}
+""".strip()
+
+    send_text(
+        phone=phone,
+        message=message
+    )
+
+
+def send_customer_order_ready(
+    phone: str,
+    customer_name: str,
+    business_name: str,
+    order_number: str,
+    pickup_pin: str
+):
+
+    message = f"""
+🍽️ Order Ready
+
+Hi {customer_name},
+
+Your order from
+{business_name}
+is ready for pickup.
+
+Order No: {order_number}
+
+🔐 Pickup PIN:
+{pickup_pin}
+
+Please show this PIN
+while collecting your order.
+""".strip()
+
+    send_text(
+        phone=phone,
+        message=message
+    )
