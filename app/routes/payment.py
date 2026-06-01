@@ -20,7 +20,8 @@ from app.config import (
 from app.models import (
     MenuSession,
     User,
-    Business
+    Business,
+    MenuItem
 )
 from app.services.whatsapp import (
     send_customer_order_confirmation,
@@ -70,6 +71,93 @@ async def create_payment_order(
 
         if not existing:
             break
+
+    # -------------------------
+    # VALIDATION ONLY
+    # -------------------------
+
+    if data.get("validate_only"):
+
+        # -------------------------
+        # VALIDATE CART ITEMS
+        # -------------------------
+
+        cart_items = data.get(
+            "items", {}
+        )
+
+        invalid_items = []
+
+        for item_name in cart_items.keys():
+
+            result = await db.execute(
+                select(MenuItem).where(
+                    MenuItem.name
+                    == item_name,
+
+                    MenuItem.business_id
+                    == data["business_id"]
+                )
+            )
+
+            menu_item = (
+                result.scalar_one_or_none()
+            )
+
+            if (
+                not menu_item
+            ):
+
+                invalid_items.append({
+                    "name":
+                        item_name,
+                    "reason":
+                        "deleted"
+                })
+
+                continue
+
+            if (
+                not menu_item
+                .is_active
+            ):
+
+                invalid_items.append({
+                    "name":
+                        item_name,
+                    "reason":
+                        "unavailable"
+                })
+
+                continue
+
+            if (
+                not menu_item
+                .available
+            ):
+
+                invalid_items.append({
+                    "name":
+                        item_name,
+                    "reason":
+                        "out_of_stock"
+                })
+
+        if invalid_items:
+
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message":
+                        "Some items are unavailable",
+                    "items":
+                        invalid_items
+                }
+            )
+
+        return {
+            "success": True
+        }
 
     # -------------------------
     # SESSION FLOW
@@ -224,6 +312,68 @@ async def create_payment_order(
                 "Business is currently "
                 f"{business.status}"
             )
+        )
+    
+    # -------------------------
+    # VALIDATE CART ITEMS
+    # -------------------------
+
+    cart_items = data.get("items", {})
+
+    invalid_items = []
+
+    for item_name in cart_items.keys():
+
+        result = await db.execute(
+            select(MenuItem).where(
+                MenuItem.name == item_name,
+                MenuItem.business_id == data["business_id"]
+            )
+        )
+
+        menu_item = (
+            result.scalar_one_or_none()
+        )
+
+        # item deleted
+        if not menu_item:
+
+            invalid_items.append({
+                "name": item_name,
+                "reason": "deleted"
+            })
+
+            continue
+
+        # item inactive
+        if not menu_item.is_active:
+
+            invalid_items.append({
+                "name": item_name,
+                "reason": "unavailable"
+            })
+
+            continue
+
+        # out of stock
+        if not menu_item.available:
+
+            invalid_items.append({
+                "name": item_name,
+                "reason": "out_of_stock"
+            })
+
+    # block checkout
+    if invalid_items:
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message":
+                    "Some items are unavailable",
+                "items":
+                    invalid_items
+            }
         )
 
     # -------------------------
