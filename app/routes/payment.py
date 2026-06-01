@@ -14,14 +14,18 @@ import hmac
 import hashlib
 from app.config import (
     RAZORPAY_KEY_ID,
-    RAZORPAY_KEY_SECRET
+    RAZORPAY_KEY_SECRET,
+    FRONTEND_URL
 )
 from app.models import (
     MenuSession,
     User,
     Business
 )
-from app.services.whatsapp import send_text
+from app.services.whatsapp import (
+    send_customer_order_confirmation,
+    send_merchant_new_order
+)
 import secrets
 
 router = APIRouter()
@@ -333,6 +337,18 @@ async def verify_payment(
         result.scalar_one_or_none()
     )
 
+    business_result = await db.execute(
+        select(Business).where(
+            Business.id
+            == order.business_id
+        )
+    )
+
+    business = (
+        business_result
+        .scalar_one_or_none()
+    )
+
     if not order:
 
         return {
@@ -454,26 +470,63 @@ async def verify_payment(
         menu_session.is_active = False
 
     # -------------------------
-    # SEND MESSAGE
+    # CUSTOMER NOTIFICATION
     # -------------------------
 
     background_tasks.add_task(
 
-        send_text,
+        send_customer_order_confirmation,
 
-        f"✅ Payment successful!\n\n"
+        order.phone,
 
-        f"🧾 Order "
-        f"#{order.id}\n"
+        order.customer_name,
 
-        f"💰 Amount Paid: "
-        f"₹{order.total_price}\n\n"
+        business.name,
 
-        f"🔐 Pickup PIN: "
-        f"{order.pickup_pin}\n\n"
+        f"BK{order.id}",
 
-        f"Use this PIN while "
-        f"picking up your order."
+        order.total_price,
+
+        (
+            f"http://192.168.0.105:5173/"
+            # f"{FRONTEND_URL}"
+            f"order-success?"
+            f"{order.access_token}"
+        )
+    )
+
+    # -------------------------
+    # MERCHANT NOTIFICATION
+    # -------------------------
+
+    items_text = ""
+
+    for item_name, quantity in (
+        order.items.items()
+    ):
+
+        items_text += (
+            f"{quantity}x "
+            f"{item_name}\n"
+        )
+
+    background_tasks.add_task(
+
+        send_merchant_new_order,
+
+        business.business_phone,  # merchant phone
+
+        business.name,
+
+        f"BK{order.id}",
+
+        order.total_price,
+
+        items_text.strip(),
+
+        (
+            "https://quickkart.app/admin"
+        )
     )
 
     await db.commit()

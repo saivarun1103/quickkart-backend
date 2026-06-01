@@ -18,3 +18,7 @@ RAZORPAY_KEY_SECRET = os.getenv(
 MAGIC_LINK_SECRET = os.getenv(
     "MAGIC_LINK_SECRET"
 )
+
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL"
+)

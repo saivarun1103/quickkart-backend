@@ -15,7 +15,10 @@ from app.dependencies import (
     get_current_business
 )
 from pydantic import BaseModel
-from app.services.whatsapp import send_text
+from app.services.whatsapp import (
+    send_text,
+    send_customer_order_ready
+)
 from datetime import datetime, timedelta
 from app.services.cloudinary_service import upload_image
 
@@ -503,19 +506,20 @@ async def update_order_status(
 
         background_tasks.add_task(
 
-            send_text,
+            send_customer_order_ready,
 
             order.phone,
 
-            f"✅ Your order is ready "
-            f"for pickup!\n\n"
+            (
+                order.customer_name
+                or "Customer"
+            ),
 
-            f"Pickup PIN: "
-            f"{order.pickup_pin}\n\n"
+            business.name,
 
-            f"Please show this PIN "
-            f"while collecting "
-            f"your order 🍽️"
+            f"BK{order.id}",
+
+            order.pickup_pin
         )
 
     await db.refresh(order)

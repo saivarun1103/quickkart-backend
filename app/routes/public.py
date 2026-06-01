@@ -14,6 +14,10 @@ from app.models import (
     MenuItem,
     Business
 )
+from app.services.whatsapp import (
+    send_customer_order_confirmation,
+    send_merchant_new_order
+)
 
 router = APIRouter()
 
@@ -51,6 +55,21 @@ async def get_public_order(
             status_code=401,
             detail="Unauthorized"
         )
+    
+    # -------------------------
+    # GET BUSINESS
+    # -------------------------
+
+    business_result = await db.execute(
+        select(Business).where(
+            Business.id == order.business_id
+        )
+    )
+
+    business = (
+        business_result
+        .scalar_one_or_none()
+    )
 
     detailed_items = []
 
@@ -95,7 +114,12 @@ async def get_public_order(
                 price,
 
             "subtotal":
-                price * quantity
+                price * quantity,
+
+            "image_url":
+                menu_item.image_url
+                if menu_item
+                else None
         })
 
     return {
@@ -122,11 +146,26 @@ async def get_public_order(
             "total":
                 order.total_price,
 
+            "business_name":
+                business.name,
+
+            "location_name":
+                business.location_name,
+
+            "latitude":
+                business.latitude,
+
+            "longitude":
+                business.longitude,
+
             "items":
                 detailed_items,
 
             "created_at":
-                order.created_at
+                order.created_at,
+
+            "logo_url":
+                business.logo_url
         }
     }
 
@@ -234,3 +273,34 @@ async def get_popular_businesses(
 
         for business in businesses
     ]
+
+@router.get("/test-order-whatsapp")
+async def test_order_whatsapp():
+
+    send_customer_order_confirmation(
+        phone="917702521639",
+        customer_name="Varn",
+        business_name="Babai Hotel",
+        order_number="BK2931",
+        amount=245
+    )
+
+    send_merchant_new_order(
+        phone="917702521639",
+        business_name="Babai Hotel",
+        order_number="BK2931",
+        amount=245,
+        items_text=(
+            "2x Idli\n"
+            "1x Dosa\n"
+            "1x Coke"
+        ),
+        dashboard_link=(
+            "https://quickkart.app/admin"
+        )
+    )
+
+    return {
+        "message":
+        "WhatsApp test sent"
+    }
