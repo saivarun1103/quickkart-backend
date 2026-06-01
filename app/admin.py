@@ -629,10 +629,12 @@ async def verify_pickup(
             order.items
     }
 
+from datetime import date, datetime, timedelta
+
 @router.get("/analytics")
 async def get_analytics(
-
-    date: str,
+    startDate: date,
+    endDate: date,
 
     db: AsyncSession = Depends(get_db),
 
@@ -641,21 +643,20 @@ async def get_analytics(
     )
 ):
 
-    selected_date = datetime.strptime(
-        date,
-        "%Y-%m-%d"
+    # Include full end day
+    start = datetime.combine(
+        startDate,
+        datetime.min.time()
     )
 
-    start = datetime(
-        selected_date.year,
-        selected_date.month,
-        selected_date.day
+    end = datetime.combine(
+        endDate + timedelta(days=1),
+        datetime.min.time()
     )
-
-    end = start + timedelta(days=1)
 
     result = await db.execute(
         select(Order).where(
+
             Order.business_id
             == business.id,
 
@@ -668,17 +669,29 @@ async def get_analytics(
         )
     )
 
-    orders = result.scalars().all()
+    orders = (
+        result.scalars().all()
+    )
 
     total_sales = sum(
         float(order.total_price)
         for order in orders
     )
 
-    total_orders = len(orders)
+    total_orders = len(
+        orders
+    )
 
     return {
-        "date": date,
-        "total_sales": total_sales,
-        "total_orders": total_orders
+        "startDate":
+            str(startDate),
+
+        "endDate":
+            str(endDate),
+
+        "total_sales":
+            total_sales,
+
+        "total_orders":
+            total_orders
     }
