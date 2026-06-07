@@ -52,20 +52,22 @@ app.include_router(
 origins = [
     # "http://localhost:5173",
     # "https://collins-powered-darleen.ngrok-free.dev",  # your frontend URL
-    "https://collins-powered-darleen.ngrok-free.dev",
-    "https://quickkart-3f8h.onrender.com/api/business",
-    "http://localhost:5173",
-    "http://localhost:8000",
-    "http://192.168.0.106:5173",
-    "http://192.168.0.106:8000",
-    "https://quickkart-frontend-beta.vercel.app"
+    # "https://collins-powered-darleen.ngrok-free.dev",
+    # "https://quickkart-3f8h.onrender.com/api/business",
+    # "http://localhost:5173",
+    # "http://localhost:8000",
+    # "http://192.168.0.106:5173",
+    # "http://192.168.0.106:8000",
+    # "https://quickkart-frontend-beta.vercel.app",
+    "https://goskipdq.com",
+    "https://www.goskipdq.com"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     # allow_origins=["https://quickkart-frontend-beta.vercel.app"],
-    # allow_origins=origins,
-    allow_origins=["*"],
+    allow_origins=origins,
+    # allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
