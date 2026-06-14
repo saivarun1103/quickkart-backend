@@ -249,6 +249,8 @@ async def update_item(
 
     description: str = Form(""),
 
+    available: bool = Form(True),
+
     file: UploadFile = File(None),
 
     db: AsyncSession = Depends(get_db),
@@ -303,6 +305,8 @@ async def update_item(
                 status_code=500,
                 detail="Image upload failed"
             )
+
+    item.available = available
 
     await db.commit()
 
@@ -400,7 +404,90 @@ async def get_orders(
 
     orders = result.scalars().all()
 
-    return orders
+    response_orders = []
+
+    for order in orders:
+
+        enriched_items = []
+
+        if order.items:
+
+            menu_result = await db.execute(
+                select(MenuItem).where(
+                    MenuItem.business_id
+                    == business.id
+                )
+            )
+
+            menu_items = (
+                menu_result.scalars().all()
+            )
+
+            menu_price_map = {
+                item.name.lower(): item.price
+                for item in menu_items
+            }
+
+            for (
+                item_name,
+                qty
+            ) in order.items.items():
+
+                unit_price = (
+                    menu_price_map.get(
+                        item_name.lower(),
+                        0
+                    )
+                )
+
+                enriched_items.append(
+                    {
+                        "name":
+                            item_name,
+
+                        "qty":
+                            qty,
+
+                        "price":
+                            unit_price,
+
+                        "subtotal":
+                            unit_price * qty
+                    }
+                )
+
+        response_orders.append(
+            {
+                "id":
+                    order.id,
+
+                "customer_name":
+                    order.customer_name,
+
+                "phone":
+                    order.phone,
+
+                "status":
+                    order.status,
+
+                "pickup_pin":
+                    order.pickup_pin,
+
+                "created_at":
+                    order.created_at,
+
+                "total_price":
+                    order.total_price,
+
+                "payment_status":
+                    order.payment_status,
+
+                "items":
+                    enriched_items
+            }
+        )
+
+    return response_orders
 
 
 ##Update Status API
@@ -629,21 +716,26 @@ async def verify_pickup(
             order.items
     }
 
-from datetime import date, datetime, timedelta
+from datetime import (
+    date,
+    datetime,
+    timedelta
+)
 
 @router.get("/analytics")
 async def get_analytics(
     startDate: date,
     endDate: date,
 
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(
+        get_db
+    ),
 
     business: Business = Depends(
         get_current_business
     )
 ):
 
-    # Include full end day
     start = datetime.combine(
         startDate,
         datetime.min.time()
@@ -667,6 +759,9 @@ async def get_analytics(
             Order.payment_status
             == "paid"
         )
+        .order_by(
+            Order.created_at.desc()
+        )
     )
 
     orders = (
@@ -682,6 +777,102 @@ async def get_analytics(
         orders
     )
 
+    response_orders = []
+
+    # menu prices lookup
+    menu_result = await db.execute(
+        select(MenuItem).where(
+            MenuItem.business_id
+            == business.id
+        )
+    )
+
+    menu_items = (
+        menu_result.scalars().all()
+    )
+
+    menu_price_map = {
+        item.name.lower():
+        item.price
+        for item
+        in menu_items
+    }
+
+    for order in orders:
+
+        enriched_items = []
+
+        if order.items:
+
+            for (
+                item_name,
+                qty
+            ) in order.items.items():
+
+                unit_price = (
+                    menu_price_map.get(
+                        item_name.lower(),
+                        0
+                    )
+                )
+
+                enriched_items.append(
+                    {
+                        "name":
+                            item_name,
+
+                        "qty":
+                            qty,
+
+                        "price":
+                            unit_price,
+
+                        "subtotal":
+                            unit_price * qty
+                    }
+                )
+
+        response_orders.append(
+            {
+                "id":
+                    order.id,
+
+                "customer_name":
+                    order.customer_name,
+
+                "phone":
+                    order.phone,
+
+                "status":
+                    order.status,
+
+                "pickup_pin":
+                    order.pickup_pin,
+
+                "created_at":
+                    order.created_at.isoformat(),
+
+                "total_price":
+                    order.total_price,
+
+                "payment_status":
+                    order.payment_status,
+
+                "order_number":
+                    f"BK{order.id}",
+
+                "items":
+                    enriched_items
+            }
+        )
+
+    avg_order = (
+        total_sales /
+        total_orders
+        if total_orders > 0
+        else 0
+    )
+
     return {
         "startDate":
             str(startDate),
@@ -693,5 +884,15 @@ async def get_analytics(
             total_sales,
 
         "total_orders":
-            total_orders
+            total_orders,
+
+        "avg_order":
+            round(
+                avg_order,
+                2
+            ),
+
+        "orders":
+            response_orders
     }
+

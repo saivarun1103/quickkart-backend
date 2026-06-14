@@ -633,12 +633,12 @@ async def verify_payment(
 
         business.name,
 
-        f"BK{order.id}",
+        f"{order.id}",
 
         order.total_price,
 
         (
-            f"http://192.168.0.105:5173/"
+            f"goskipdq.com/"
             # f"{FRONTEND_URL}"
             f"order-success?"
             f"{order.access_token}"
@@ -668,14 +668,14 @@ async def verify_payment(
 
         business.name,
 
-        f"BK{order.id}",
+        f"{order.id}",
 
         order.total_price,
 
         items_text.strip(),
 
         (
-            "https://quickkart.app/admin"
+            "goskipdq.com/admin"
         )
     )
 
