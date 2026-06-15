@@ -21,6 +21,9 @@ from app.services.whatsapp import (
 )
 from datetime import datetime, timedelta
 from app.services.cloudinary_service import upload_image
+from app.services.whatsapp import (
+    send_customer_thank_you
+)
 
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
@@ -595,18 +598,26 @@ async def update_order_status(
 
             send_customer_order_ready,
 
-            order.phone,
+            phone=order.phone,
 
-            (
+            customer_name=
                 order.customer_name
-                or "Customer"
-            ),
+                or "Customer",
 
-            business.name,
+            business_name=
+                business.name,
 
-            f"BK{order.id}",
+            order_number=
+                f"BK{order.id}",
 
-            order.pickup_pin
+            order_token=
+                order.hash,
+
+            latitude=
+                business.latitude,
+
+            longitude=
+                business.longitude
         )
 
     await db.refresh(order)
@@ -697,15 +708,10 @@ async def verify_pickup(
         else "Customer"
     )
 
-    send_text(
+    send_customer_thank_you(
         order.phone,
-
-        f"🙏 Thank you "
-        f"{customer_name} "
-        f"for ordering from "
-        f"{business.name}!\n\n"
-
-        f"Please visit again ❤️"
+        customer_name,
+        business.name
     )
 
     return {
