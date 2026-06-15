@@ -54,7 +54,7 @@ origins = [
     # "https://collins-powered-darleen.ngrok-free.dev",  # your frontend URL
     # "https://collins-powered-darleen.ngrok-free.dev",
     # "https://quickkart-3f8h.onrender.com/api/business",
-    # "http://localhost:5173",
+    "http://localhost:5173",
     # "http://localhost:8000",
     # "http://192.168.0.106:5173",
     # "http://192.168.0.106:8000",

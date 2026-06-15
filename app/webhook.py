@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, BackgroundTasks
 from app.config import VERIFY_TOKEN
-from app.services.whatsapp import send_menu_link, send_text
+from app.services.whatsapp import send_menu_link, send_text, send_menu_template
 from app.services.orderParser import parse_order, calculate_total
 from app.db import get_db
 from app.models import User, Order, MenuItem, Payment, MenuSession, Business

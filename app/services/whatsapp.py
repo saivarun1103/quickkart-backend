@@ -12,10 +12,7 @@ def send_template(
     button_params: list = None,
     language: str = "en"
 ):
-    url = (
-        f"https://graph.facebook.com/v19.0/"
-        f"{PHONE_NUMBER_ID}/messages"
-    )
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization":
@@ -104,39 +101,89 @@ def send_template(
 
     return response.json()
 
-# def send_menu_template(phone: str, link,db: Session = Depends(get_db)):
-#     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+def send_menu_template(phone: str, link):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": phone,
+        "type": "template",
+        "template": {
+            "name": "test_menu",   # 👈 your new template name
+            "language": {"code": "en"},
+            "components": [
+                {
+                    "type": "button",
+                    "sub_type": "url",
+                    "index": "0",
+                    "parameters": [
+                        {
+                            "type": "text",
+                            "text": link
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=data, timeout=10)
+    print("MENU RESPONSE:", response.status_code, response.text)
+
+    return response.json()
+
+# def send_menu_template(phone: str):
+#     url = (
+#         f"https://graph.facebook.com/v19.0/"
+#         f"{PHONE_NUMBER_ID}/messages"
+#     )
 
 #     headers = {
-#         "Authorization": f"Bearer {ACCESS_TOKEN}",
-#         "Content-Type": "application/json"
+#         "Authorization":
+#             f"Bearer {ACCESS_TOKEN}",
+
+#         "Content-Type":
+#             "application/json"
 #     }
 
 #     data = {
-#         "messaging_product": "whatsapp",
-#         "to": phone,
-#         "type": "template",
+#         "messaging_product":
+#             "whatsapp",
+
+#         "to":
+#             phone,
+
+#         "type":
+#             "template",
+
 #         "template": {
-#             "name": "test_menu",   # 👈 your new template name
-#             "language": {"code": "en_US"},
-#             "components": [
-#                 {
-#                     "type": "button",
-#                     "sub_type": "url",
-#                     "index": "0",
-#                     "parameters": [
-#                         {
-#                             "type": "text",
-#                             "text": link
-#                         }
-#                     ]
-#                 }
-#             ]
+#             "name":
+#                 "hello_world",
+
+#             "language": {
+#                 "code":
+#                     "en_US"
+#             }
 #         }
 #     }
 
-#     response = requests.post(url, headers=headers, json=data, timeout=10)
-#     print("MENU RESPONSE:", response.status_code, response.text)
+#     response = requests.post(
+#         url,
+#         headers=headers,
+#         json=data,
+#         timeout=10
+#     )
+
+#     print(
+#         "MENU RESPONSE:",
+#         response.status_code,
+#         response.text
+#     )
 
 #     return response.json()
 
@@ -244,7 +291,7 @@ def send_customer_order_confirmation(
         phone=phone,
 
         template_name=
-            "order_confirmed",
+            "order_confirmed_v2",
 
         body_params=[
             customer_name,
@@ -254,7 +301,7 @@ def send_customer_order_confirmation(
         ],
 
         button_params=[
-            [order_token]
+            [f"?{order_token}"]
         ]
     )
 
@@ -279,10 +326,6 @@ def send_merchant_new_order(
             order_number,
             amount,
             items_text
-        ],
-
-        button_params=[
-            [order_id]
         ]
     )
 
@@ -301,7 +344,7 @@ def send_customer_order_ready(
         phone=phone,
 
         template_name=
-            "order_ready_pickup",
+            "order_ready_pickup_v2",
 
         body_params=[
             customer_name,
@@ -310,17 +353,8 @@ def send_customer_order_ready(
         ],
 
         button_params=[
-
-            # View Order
-            [
-                order_token
-            ],
-
-            # Directions
-            [
-                latitude,
-                longitude
-            ]
+            [f"?{order_token}"],
+            [f"={latitude},{longitude}"]
         ]
     )
 
