@@ -85,6 +85,10 @@ def send_template(
         }
     }
 
+    print("TEMPLATE:", template_name)
+    print("LANG:", language)
+    print("DATA:", data)
+
     response = requests.post(
         url,
         headers=headers,

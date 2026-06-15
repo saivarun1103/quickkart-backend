@@ -623,26 +623,24 @@ async def verify_payment(
     # CUSTOMER NOTIFICATION
     # -------------------------
 
+    
+
     background_tasks.add_task(
 
         send_customer_order_confirmation,
 
         order.phone,
 
-        order.customer_name,
+        order.customer_name
+        or "Customer",
 
         business.name,
 
-        f"{order.id}",
+        f"BK{order.id}",
 
         order.total_price,
 
-        (
-            f"goskipdq.com/"
-            # f"{FRONTEND_URL}"
-            f"order-success?"
-            f"{order.access_token}"
-        )
+        order.access_token
     )
 
     # -------------------------
