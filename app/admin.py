@@ -595,29 +595,22 @@ async def update_order_status(
     if status == "ready":
 
         background_tasks.add_task(
-
             send_customer_order_ready,
 
-            phone=order.phone,
+            order.phone,
 
-            customer_name=
-                order.customer_name
-                or "Customer",
+            order.customer_name
+            or "Customer",
 
-            business_name=
-                business.name,
+            business.name,
 
-            order_number=
-                f"BK{order.id}",
+            f"{order.id}",
 
-            order_token=
-                order.hash,
+            order.access_token,
 
-            latitude=
-                business.latitude,
+            business.latitude,
 
-            longitude=
-                business.longitude
+            business.longitude
         )
 
     await db.refresh(order)
