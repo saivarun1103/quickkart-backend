@@ -186,3 +186,15 @@ class MenuSession(Base):
         default=lambda:
             datetime.now(timezone.utc)
     )
+
+class PushToken(Base):
+    __tablename__ = "business_push_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(
+        Integer,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    token = Column(String, unique=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.now)

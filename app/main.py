@@ -7,7 +7,7 @@ from app.routes import (
 )
 from contextlib import asynccontextmanager
 from app.db import engine, get_db
-from app.models import Base, MenuItem, Business, User, MenuSession
+from app.models import Base, MenuItem, Business, User, MenuSession, PushToken
 from fastapi.middleware.cors import CORSMiddleware
 from app.admin import router as admin_router
 from app.schemas import LoginRequest, RegisterRequest
@@ -761,3 +761,29 @@ async def check_phone(
     return {
         "exists": False
     }
+
+class PushTokenRequest(BaseModel):
+    token: str
+
+@app.post("/api/admin/push-token")
+async def register_push_token(
+    data: PushTokenRequest,
+    db: AsyncSession = Depends(get_db),
+    business: Business = Depends(get_current_business)
+):
+    result = await db.execute(
+        select(PushToken).where(PushToken.token == data.token)
+    )
+    existing_token = result.scalar_one_or_none()
+
+    if existing_token:
+        existing_token.business_id = business.id
+    else:
+        new_token = PushToken(
+            business_id=business.id,
+            token=data.token
+        )
+        db.add(new_token)
+
+    await db.commit()
+    return {"success": True, "message": "Push token registered successfully"}

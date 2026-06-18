@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy import select
 
 from app.db import get_db
-from app.models import Order, Payment
+from app.models import Order, Payment, PushToken
 from app.services.razorpay_service import (
     create_razorpay_order
 )
@@ -677,6 +677,23 @@ async def verify_payment(
         )
     )
 
+    # -------------------------
+    # PUSH NOTIFICATION FOR MERCHANT
+    # -------------------------
+    tokens_result = await db.execute(
+        select(PushToken.token).where(PushToken.business_id == order.business_id)
+    )
+    push_tokens = list(tokens_result.scalars().all())
+
+    if push_tokens:
+        background_tasks.add_task(
+            send_expo_push_notifications,
+            push_tokens,
+            "🍽️ New Order",
+            f"{order.customer_name or 'Customer'} • ₹{order.total_price}",
+            order.id
+        )
+
     await db.commit()
 
     return {
@@ -685,3 +702,30 @@ async def verify_payment(
 
         "access_token": order.access_token
     }
+
+def send_expo_push_notifications(tokens: list[str], title: str, body: str, order_id: int):
+    import requests
+    if not tokens:
+        return
+
+    payload = [
+        {
+            "to": token,
+            "title": title,
+            "body": body,
+            "sound": "default",
+            "data": {"orderId": order_id}
+        }
+        for token in tokens
+    ]
+
+    try:
+        response = requests.post(
+            "https://exp.host/--/api/v2/push/send",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10
+        )
+        print("EXPO PUSH SENT SUCCESS:", response.status_code, response.text)
+    except Exception as e:
+        print("EXPO PUSH SENT ERROR:", e)
