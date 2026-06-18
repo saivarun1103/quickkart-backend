@@ -166,7 +166,10 @@ def get_business(
         "business_type":
             business.business_type,
 
-        "slug": business.slug
+        "slug": business.slug,
+
+        "location_name":
+            business.location_name
     }
 
 # @app.get("/menu")
