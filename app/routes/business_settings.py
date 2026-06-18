@@ -50,7 +50,13 @@ async def get_settings(
             business.logo_url,
 
         "banner_url":
-            business.banner_url
+            business.banner_url,
+
+        "name":
+            business.name,
+
+        "location_name":
+            business.location_name
     }
 
 

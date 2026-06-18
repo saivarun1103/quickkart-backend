@@ -33,6 +33,9 @@ class BusinessSettingsResponse(
     status: str
     logo_url: str | None = None
     banner_url: str | None = None
+    name: str | None = None
+    location_name: str | None = None
+
 
 
 class BusinessSettingsUpdate(
