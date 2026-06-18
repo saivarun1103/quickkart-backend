@@ -714,6 +714,7 @@ def send_expo_push_notifications(tokens: list[str], title: str, body: str, order
             "title": title,
             "body": body,
             "sound": "default",
+            "channelId": "orders_v2",
             "data": {"orderId": order_id}
         }
         for token in tokens
