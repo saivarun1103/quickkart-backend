@@ -536,10 +536,8 @@ async def update_order_status(
             status_code=400,
             detail="Order already completed"
         )
-
     # valid statuses
     if status not in [
-        "preparing",
         "ready",
         "completed"
     ]:
@@ -553,7 +551,7 @@ async def update_order_status(
     allowed_transitions = {
 
         "pending": [
-            "preparing",
+            "ready",
             "completed"
         ],
 
@@ -568,7 +566,6 @@ async def update_order_status(
 
         "completed": []
     }
-
     current_status = order.status
 
     if status not in (

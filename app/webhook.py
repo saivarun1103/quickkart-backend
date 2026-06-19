@@ -803,7 +803,6 @@ async def razorpay_webhook(
 
                     Order.status.in_([
                         "pending",
-                        "preparing",
                         "ready"
                     ])
                 )
