@@ -216,7 +216,11 @@ async def search_businesses(
                 business.business_phone,
             "slug": business.slug,
             "logo_url":
-                business.logo_url
+                business.logo_url,
+            "business_type":
+                business.business_type,
+            "address_name":
+                business.location_name
         }
 
         for business in businesses
@@ -268,7 +272,10 @@ async def get_popular_businesses(
                 business.logo_url,
 
             "business_type":
-                business.business_type
+                business.business_type,
+
+            "address_name":
+                business.location_name
         }
 
         for business in businesses
