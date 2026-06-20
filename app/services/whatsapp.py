@@ -1,4 +1,4 @@
-from app.config import PHONE_NUMBER_ID,ACCESS_TOKEN
+from app.config import PHONE_NUMBER_ID, ACCESS_TOKEN
 from app.models import User
 import requests
 from app.db import get_db_context
@@ -10,16 +10,13 @@ def send_template(
     template_name: str,
     body_params: list = None,
     button_params: list = None,
-    language: str = "en"
+    language: str = "en",
 ):
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
-        "Authorization":
-            f"Bearer {ACCESS_TOKEN}",
-
-        "Content-Type":
-            "application/json"
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json",
     }
 
     components = []
@@ -30,83 +27,53 @@ def send_template(
             {
                 "type": "body",
                 "parameters": [
-                    {
-                        "type": "text",
-                        "text": str(param)
-                    }
-                    for param in body_params
-                ]
+                    {"type": "text", "text": str(param)} for param in body_params
+                ],
             }
         )
 
     # buttons
     if button_params:
         for index, params in enumerate(button_params):
-
             components.append(
                 {
                     "type": "button",
                     "sub_type": "url",
                     "index": str(index),
                     "parameters": [
-                        {
-                            "type": "text",
-                            "text": str(param)
-                        }
-                        for param in params
-                    ]
+                        {"type": "text", "text": str(param)} for param in params
+                    ],
                 }
             )
 
     data = {
-        "messaging_product":
-            "whatsapp",
-
-        "to":
-            phone,
-
-        "type":
-            "template",
-
+        "messaging_product": "whatsapp",
+        "to": phone,
+        "type": "template",
         "template": {
-            "name":
-                template_name,
-
-            "language": {
-                "code":
-                    language
-            },
-
-            "components":
-                components
-        }
+            "name": template_name,
+            "language": {"code": language},
+            "components": components,
+        },
     }
 
     print("TEMPLATE:", template_name)
     print("LANG:", language)
     print("DATA:", data)
 
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data,
-        timeout=10
-    )
+    response = requests.post(url, headers=headers, json=data, timeout=10)
 
-    print(
-        "TEMPLATE RESPONSE:",
-        response.status_code,
-        response.text
-    )
+    print("TEMPLATE RESPONSE:", response.status_code, response.text)
 
     return response.json()
+
 
 def send_menu_template(phone: str, link):
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     data = {
@@ -114,28 +81,24 @@ def send_menu_template(phone: str, link):
         "to": phone,
         "type": "template",
         "template": {
-            "name": "test_menu",   # 👈 your new template name
+            "name": "test_menu",  # 👈 your new template name
             "language": {"code": "en"},
             "components": [
                 {
                     "type": "button",
                     "sub_type": "url",
                     "index": "0",
-                    "parameters": [
-                        {
-                            "type": "text",
-                            "text": link
-                        }
-                    ]
+                    "parameters": [{"type": "text", "text": link}],
                 }
-            ]
-        }
+            ],
+        },
     }
 
     response = requests.post(url, headers=headers, json=data, timeout=10)
     print("MENU RESPONSE:", response.status_code, response.text)
 
     return response.json()
+
 
 # def send_menu_template(phone: str):
 #     url = (
@@ -188,72 +151,36 @@ def send_menu_template(phone: str, link):
 #     return response.json()
 
 
-async def send_menu_link(
-    phone,
-    link
-):
+async def send_menu_link(phone, link):
 
     async with get_db_context() as db:
+        result = await db.execute(select(User).where(User.phone == phone))
 
-        result = await db.execute(
-            select(User).where(
-                User.phone == phone
-            )
-        )
+        user = result.scalar_one_or_none()
 
-        user = (
-            result.scalar_one_or_none()
-        )
-
-        url = (
-            f"https://graph.facebook.com/v19.0/"
-            f"{PHONE_NUMBER_ID}/messages"
-        )
+        url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
 
         headers = {
-            "Authorization":
-                f"Bearer {ACCESS_TOKEN}",
-
-            "Content-Type":
-                "application/json"
+            "Authorization": f"Bearer {ACCESS_TOKEN}",
+            "Content-Type": "application/json",
         }
 
         data = {
-            "messaging_product":
-                "whatsapp",
-
-            "to":
-                phone,
-
-            "type":
-                "text",
-
+            "messaging_product": "whatsapp",
+            "to": phone,
+            "type": "text",
             "text": {
                 "body": (
-                    f"Hi {user.customer_name}, "
-                    f"here is the menu:\n{link}"
-
-                    if user and
-                    user.customer_name
-
-                    else
-                    f"Hi, here is the menu:\n{link}"
+                    f"Hi {user.customer_name}, here is the menu:\n{link}"
+                    if user and user.customer_name
+                    else f"Hi, here is the menu:\n{link}"
                 )
-            }
+            },
         }
 
-        response = requests.post(
-            url,
-            headers=headers,
-            json=data,
-            timeout=10
-        )
+        response = requests.post(url, headers=headers, json=data, timeout=10)
 
-        print(
-            "MENU RESPONSE:",
-            response.status_code,
-            response.text
-        )
+        print("MENU RESPONSE:", response.status_code, response.text)
 
         return response.json()
 
@@ -263,16 +190,14 @@ def send_text(phone, message):
 
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     data = {
         "messaging_product": "whatsapp",
         "to": phone,
         "type": "text",
-        "text": {
-            "body": message
-        }
+        "text": {"body": message},
     }
 
     requests.post(url, headers=headers, json=data, timeout=10)
@@ -284,25 +209,14 @@ def send_customer_order_confirmation(
     business_name: str,
     order_number: str,
     amount: float,
-    order_token: str
+    order_token: str,
 ):
 
     send_template(
         phone=phone,
-
-        template_name=
-            "order_confirmed_v2",
-
-        body_params=[
-            customer_name,
-            business_name,
-            order_number,
-            amount
-        ],
-
-        button_params=[
-            [f"?{order_token}"]
-        ]
+        template_name="order_confirmed_v2",
+        body_params=[customer_name, business_name, order_number, amount],
+        button_params=[[f"?{order_token}"]],
     )
 
 
@@ -311,22 +225,12 @@ def send_merchant_new_order(
     business_name: str,
     order_number: str,
     amount: float,
-    items_text: str,
-    order_id: int
+    items_count: int,
 ):
-
     send_template(
         phone=phone,
-
-        template_name=
-            "new_order_alert",
-
-        body_params=[
-            business_name,
-            order_number,
-            amount,
-            items_text
-        ]
+        template_name="new_order_alert",
+        body_params=[business_name, order_number, amount, items_count],
     )
 
 
@@ -337,42 +241,21 @@ def send_customer_order_ready(
     order_number: str,
     order_token: str,
     latitude: float,
-    longitude: float
+    longitude: float,
 ):
 
     send_template(
         phone=phone,
-
-        template_name=
-            "order_ready_pickup_v2",
-
-        body_params=[
-            customer_name,
-            business_name,
-            order_number
-        ],
-
-        button_params=[
-            [f"?{order_token}"],
-            [f"={latitude},{longitude}"]
-        ]
+        template_name="order_ready_pickup_v2",
+        body_params=[customer_name, business_name, order_number],
+        button_params=[[f"?{order_token}"], [f"={latitude},{longitude}"]],
     )
 
 
-def send_customer_thank_you(
-    phone: str,
-    customer_name: str,
-    business_name: str
-):
+def send_customer_thank_you(phone: str, customer_name: str, business_name: str):
 
     send_template(
         phone=phone,
-
-        template_name=
-            "thank_you_visit_again",
-
-        body_params=[
-            customer_name,
-            business_name
-        ]
+        template_name="thank_you_visit_again",
+        body_params=[customer_name, business_name],
     )

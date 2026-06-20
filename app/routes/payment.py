@@ -1,46 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.ext.asyncio import (
-    AsyncSession
-)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import select
 
 from app.db import get_db
 from app.models import Order, Payment, PushToken
-from app.services.razorpay_service import (
-    create_razorpay_order
-)
+from app.services.razorpay_service import create_razorpay_order
 import hmac
 import hashlib
-from app.config import (
-    RAZORPAY_KEY_ID,
-    RAZORPAY_KEY_SECRET,
-    FRONTEND_URL
-)
-from app.models import (
-    MenuSession,
-    User,
-    Business,
-    MenuItem
-)
+from app.config import RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, FRONTEND_URL
+from app.models import MenuSession, User, Business, MenuItem
 from app.services.whatsapp import (
     send_customer_order_confirmation,
-    send_merchant_new_order
+    send_merchant_new_order,
 )
 import secrets
 
 router = APIRouter()
 
 
-@router.post(
-    "/create-razorpay-order"
-)
-async def create_payment_order(
-    data: dict,
-    db: AsyncSession = Depends(
-        get_db
-    )
-):
+@router.post("/create-razorpay-order")
+async def create_payment_order(data: dict, db: AsyncSession = Depends(get_db)):
 
     import random
 
@@ -49,25 +29,11 @@ async def create_payment_order(
     # -------------------------
 
     while True:
+        pin = str(random.randint(1000, 9999))
 
-        pin = str(
-            random.randint(
-                1000,
-                9999
-            )
-        )
+        result = await db.execute(select(Order).where(Order.pickup_pin == pin))
 
-        result = await db.execute(
-            select(Order).where(
-                Order.pickup_pin
-                == pin
-            )
-        )
-
-        existing = (
-            result.scalars()
-            .first()
-        )
+        existing = result.scalars().first()
 
         if not existing:
             break
@@ -77,190 +43,100 @@ async def create_payment_order(
     # -------------------------
 
     if data.get("validate_only"):
-
         # -------------------------
         # VALIDATE CART ITEMS
         # -------------------------
 
-        cart_items = data.get(
-            "items", {}
-        )
+        cart_items = data.get("items", {})
 
         invalid_items = []
 
         for item_name in cart_items.keys():
-
             result = await db.execute(
                 select(MenuItem).where(
-                    MenuItem.name
-                    == item_name,
-
-                    MenuItem.business_id
-                    == data["business_id"]
+                    MenuItem.name == item_name,
+                    MenuItem.business_id == data["business_id"],
                 )
             )
 
-            menu_item = (
-                result.scalar_one_or_none()
-            )
+            menu_item = result.scalar_one_or_none()
 
-            if (
-                not menu_item
-            ):
-
-                invalid_items.append({
-                    "name":
-                        item_name,
-                    "reason":
-                        "deleted"
-                })
+            if not menu_item:
+                invalid_items.append({"name": item_name, "reason": "deleted"})
 
                 continue
 
-            if (
-                not menu_item
-                .is_active
-            ):
-
-                invalid_items.append({
-                    "name":
-                        item_name,
-                    "reason":
-                        "unavailable"
-                })
+            if not menu_item.is_active:
+                invalid_items.append({"name": item_name, "reason": "unavailable"})
 
                 continue
 
-            if (
-                not menu_item
-                .available
-            ):
-
-                invalid_items.append({
-                    "name":
-                        item_name,
-                    "reason":
-                        "out_of_stock"
-                })
+            if not menu_item.available:
+                invalid_items.append({"name": item_name, "reason": "out_of_stock"})
 
         if invalid_items:
-
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "message":
-                        "Some items are unavailable",
-                    "items":
-                        invalid_items
-                }
+                    "message": "Some items are unavailable",
+                    "items": invalid_items,
+                },
             )
 
-        return {
-            "success": True
-        }
+        return {"success": True}
 
     # -------------------------
     # SESSION FLOW
     # -------------------------
 
     if data.get("session_token"):
-
         result = await db.execute(
             select(MenuSession).where(
-
-                MenuSession.session_token
-                == data["session_token"],
-
-                MenuSession.is_active
-                == True
+                MenuSession.session_token == data["session_token"],
+                MenuSession.is_active == True,
             )
         )
 
-        session = (
-            result.scalar_one_or_none()
-        )
+        session = result.scalar_one_or_none()
 
         if not session:
+            raise HTTPException(status_code=401, detail="Session expired")
 
-            raise HTTPException(
-                status_code=401,
-                detail="Session expired"
-            )
-
-        customer_phone = (
-            session.phone
-        )
+        customer_phone = session.phone
 
     # -------------------------
     # PUBLIC FLOW
     # -------------------------
 
     else:
-
         if not data.get("phone"):
+            raise HTTPException(status_code=400, detail="Phone required")
 
-            raise HTTPException(
-                status_code=400,
-                detail="Phone required"
-            )
-
-        customer_phone = (
-            data["phone"]
-        )
+        customer_phone = data["phone"]
 
         # normalize
-        customer_phone = (
-            customer_phone
-            .strip()
-            .replace(" ", "")
-        )
+        customer_phone = customer_phone.strip().replace(" ", "")
 
         if len(customer_phone) == 10:
-            customer_phone = (
-                "91" + customer_phone
-            )
+            customer_phone = "91" + customer_phone
 
     # -------------------------
     # FETCH USER
     # -------------------------
 
-    result = await db.execute(
-        select(User).where(
-            User.phone
-            == customer_phone
-        )
-    )
+    result = await db.execute(select(User).where(User.phone == customer_phone))
 
-    user = (
-        result.scalar_one_or_none()
-    )
+    user = result.scalar_one_or_none()
 
     # -------------------------
     # CREATE NEW USER
     # -------------------------
 
     if not user:
+        if not data.get("customer_name"):
+            raise HTTPException(status_code=400, detail="Customer name required")
 
-        if not data.get(
-            "customer_name"
-        ):
-
-            raise HTTPException(
-                status_code=400,
-                detail=
-                "Customer name required"
-            )
-
-        user = User(
-
-            phone=
-                customer_phone,
-
-            customer_name=
-                data[
-                    "customer_name"
-                ]
-        )
+        user = User(phone=customer_phone, customer_name=data["customer_name"])
 
         db.add(user)
 
@@ -269,16 +145,9 @@ async def create_payment_order(
         await db.refresh(user)
 
     customer_name = (
-
         user.customer_name
-
-        if user and
-        user.customer_name
-
-        else data.get(
-            "customer_name",
-            "Customer"
-        )
+        if user and user.customer_name
+        else data.get("customer_name", "Customer")
     )
 
     # -------------------------
@@ -286,34 +155,19 @@ async def create_payment_order(
     # -------------------------
 
     result = await db.execute(
-        select(Business).where(
-            Business.id
-            == data["business_id"]
-        )
+        select(Business).where(Business.id == data["business_id"])
     )
 
-    business = (
-        result.scalar_one_or_none()
-    )
+    business = result.scalar_one_or_none()
 
     if not business:
-
-        raise HTTPException(
-            status_code=404,
-            detail="Business not found"
-        )
+        raise HTTPException(status_code=404, detail="Business not found")
 
     if business.status != "open":
-
         raise HTTPException(
-            status_code=403,
-
-            detail=(
-                "Business is currently "
-                f"{business.status}"
-            )
+            status_code=403, detail=(f"Business is currently {business.status}")
         )
-    
+
     # -------------------------
     # VALIDATE CART ITEMS
     # -------------------------
@@ -323,57 +177,35 @@ async def create_payment_order(
     invalid_items = []
 
     for item_name in cart_items.keys():
-
         result = await db.execute(
             select(MenuItem).where(
-                MenuItem.name == item_name,
-                MenuItem.business_id == data["business_id"]
+                MenuItem.name == item_name, MenuItem.business_id == data["business_id"]
             )
         )
 
-        menu_item = (
-            result.scalar_one_or_none()
-        )
+        menu_item = result.scalar_one_or_none()
 
         # item deleted
         if not menu_item:
-
-            invalid_items.append({
-                "name": item_name,
-                "reason": "deleted"
-            })
+            invalid_items.append({"name": item_name, "reason": "deleted"})
 
             continue
 
         # item inactive
         if not menu_item.is_active:
-
-            invalid_items.append({
-                "name": item_name,
-                "reason": "unavailable"
-            })
+            invalid_items.append({"name": item_name, "reason": "unavailable"})
 
             continue
 
         # out of stock
         if not menu_item.available:
-
-            invalid_items.append({
-                "name": item_name,
-                "reason": "out_of_stock"
-            })
+            invalid_items.append({"name": item_name, "reason": "out_of_stock"})
 
     # block checkout
     if invalid_items:
-
         raise HTTPException(
             status_code=400,
-            detail={
-                "message":
-                    "Some items are unavailable",
-                "items":
-                    invalid_items
-            }
+            detail={"message": "Some items are unavailable", "items": invalid_items},
         )
 
     # -------------------------
@@ -383,174 +215,72 @@ async def create_payment_order(
     access_token = secrets.token_urlsafe(16)
 
     order = Order(
-
-        phone=
-            customer_phone,
-
-        customer_name=
-            customer_name,
-
-        items=
-            data["items"],
-
-        total_price=
-            data["total"],
-
-        pickup_pin=
-            pin,
-
-        status=
-            "payment_pending",
-
-        payment_status=
-            "pending",
-
-        business_id=
-            data[
-                "business_id"
-            ],
-
-        session_token=
-            data.get(
-                "session_token"
-            ),
-
-        access_token=access_token
+        phone=customer_phone,
+        customer_name=customer_name,
+        items=data["items"],
+        total_price=data["total"],
+        pickup_pin=pin,
+        status="payment_pending",
+        payment_status="pending",
+        business_id=data["business_id"],
+        session_token=data.get("session_token"),
+        access_token=access_token,
     )
 
     db.add(order)
 
     await db.commit()
 
-    await db.refresh(
-        order
-    )
+    await db.refresh(order)
 
     # -------------------------
     # CREATE RAZORPAY ORDER
     # -------------------------
 
-    razorpay_order = (
-        create_razorpay_order(
-
-            amount=
-                data["total"],
-
-            receipt=
-                f"order_{order.id}"
-        )
+    razorpay_order = create_razorpay_order(
+        amount=data["total"], receipt=f"order_{order.id}"
     )
 
     return {
-
-        "success":
-            True,
-
-        "order_id":
-            order.id,
-
-        "pickup_pin":
-            order.pickup_pin,
-
-        "razorpay_order_id":
-            razorpay_order["id"],
-
-        "amount":
-            razorpay_order[
-                "amount"
-            ],
-
-        "key":
-            RAZORPAY_KEY_ID
+        "success": True,
+        "order_id": order.id,
+        "pickup_pin": order.pickup_pin,
+        "razorpay_order_id": razorpay_order["id"],
+        "amount": razorpay_order["amount"],
+        "key": RAZORPAY_KEY_ID,
     }
 
 
-@router.post(
-    "/verify-payment"
-)
+@router.post("/verify-payment")
 async def verify_payment(
-    data: dict,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(
-        get_db
-    )
+    data: dict, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ):
 
-    result = await db.execute(
-        select(Order).where(
-            Order.id
-            == data["order_id"]
-        )
-    )
+    result = await db.execute(select(Order).where(Order.id == data["order_id"]))
 
-    order = (
-        result.scalar_one_or_none()
-    )
+    order = result.scalar_one_or_none()
 
     business_result = await db.execute(
-        select(Business).where(
-            Business.id
-            == order.business_id
-        )
+        select(Business).where(Business.id == order.business_id)
     )
 
-    business = (
-        business_result
-        .scalar_one_or_none()
-    )
+    business = business_result.scalar_one_or_none()
 
     if not order:
-
-        return {
-
-            "success":
-                False,
-
-            "message":
-                "Order not found"
-        }
+        return {"success": False, "message": "Order not found"}
 
     # -------------------------
     # VERIFY SIGNATURE
     # -------------------------
 
-    generated_signature = (
-        hmac.new(
+    generated_signature = hmac.new(
+        bytes(RAZORPAY_KEY_SECRET, "utf-8"),
+        bytes(f"{data['razorpay_order_id']}|{data['razorpay_payment_id']}", "utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
-            bytes(
-                RAZORPAY_KEY_SECRET,
-                "utf-8"
-            ),
-
-            bytes(
-
-                f"{data['razorpay_order_id']}|"
-                f"{data['razorpay_payment_id']}",
-
-                "utf-8"
-            ),
-
-            hashlib.sha256
-
-        ).hexdigest()
-    )
-
-    if (
-        generated_signature
-        !=
-        data[
-            "razorpay_signature"
-        ]
-    ):
-
-        return {
-
-            "success":
-                False,
-
-            "message":
-                "Invalid signature"
-        }
+    if generated_signature != data["razorpay_signature"]:
+        return {"success": False, "message": "Invalid signature"}
 
     # -------------------------
     # UPDATE ORDER
@@ -558,45 +288,23 @@ async def verify_payment(
 
     order.status = "pending"
 
-    order.payment_status = (
-        "paid"
-    )
+    order.payment_status = "paid"
 
-    order.payment_id = data[
-        "razorpay_payment_id"
-    ]
+    order.payment_id = data["razorpay_payment_id"]
 
     # -------------------------
     # SAVE PAYMENT
     # -------------------------
 
     payment = Payment(
-
-        order_id=
-            order.id,
-
-        business_id=
-            order.business_id,
-
-        phone=
-            order.phone,
-
-        customer_name=
-            order.customer_name,
-
-        razorpay_payment_id=
-            data[
-                "razorpay_payment_id"
-            ],
-
-        amount=
-            order.total_price,
-
-        status=
-            "captured",
-
-        payment_method=
-            "online"
+        order_id=order.id,
+        business_id=order.business_id,
+        phone=order.phone,
+        customer_name=order.customer_name,
+        razorpay_payment_id=data["razorpay_payment_id"],
+        amount=order.total_price,
+        status="captured",
+        payment_method="online",
     )
 
     db.add(payment)
@@ -606,15 +314,10 @@ async def verify_payment(
     # -------------------------
 
     result = await db.execute(
-        select(MenuSession).where(
-            MenuSession.session_token
-            == order.session_token
-        )
+        select(MenuSession).where(MenuSession.session_token == order.session_token)
     )
 
-    menu_session = (
-        result.scalar_one_or_none()
-    )
+    menu_session = result.scalar_one_or_none()
 
     if menu_session:
         menu_session.is_active = False
@@ -623,58 +326,30 @@ async def verify_payment(
     # CUSTOMER NOTIFICATION
     # -------------------------
 
-    
-
     background_tasks.add_task(
-
         send_customer_order_confirmation,
-
         order.phone,
-
-        order.customer_name
-        or "Customer",
-
+        order.customer_name or "Customer",
         business.name,
-
         f"BK{order.id}",
-
         order.total_price,
-
-        order.access_token
+        order.access_token,
     )
 
     # -------------------------
     # MERCHANT NOTIFICATION
     # -------------------------
 
-    items_text = ""
-
-    for item_name, quantity in (
-        order.items.items()
-    ):
-
-        items_text += (
-            f"{quantity}x "
-            f"{item_name}\n"
-        )
+    items_count = sum(int(quantity) for quantity in order.items.values())
 
     background_tasks.add_task(
-
         send_merchant_new_order,
-
-        business.business_phone,  # merchant phone
-
+        business.business_phone,
         business.name,
-
         f"{order.id}",
-
         order.total_price,
-
-        items_text.strip(),
-
-        (
-            "goskipdq.com/admin"
-        )
+        items_count,
+        ("goskipdq.com/admin"),
     )
 
     # -------------------------
@@ -691,20 +366,19 @@ async def verify_payment(
             push_tokens,
             "🍽️ New Order",
             f"{order.customer_name or 'Customer'} • ₹{order.total_price}",
-            order.id
+            order.id,
         )
 
     await db.commit()
 
-    return {
+    return {"success": True, "access_token": order.access_token}
 
-        "success": True,
 
-        "access_token": order.access_token
-    }
-
-def send_expo_push_notifications(tokens: list[str], title: str, body: str, order_id: int):
+def send_expo_push_notifications(
+    tokens: list[str], title: str, body: str, order_id: int
+):
     import requests
+
     if not tokens:
         return
 
@@ -715,7 +389,7 @@ def send_expo_push_notifications(tokens: list[str], title: str, body: str, order
             "body": body,
             "sound": "default",
             "channelId": "orders_v2",
-            "data": {"orderId": order_id}
+            "data": {"orderId": order_id},
         }
         for token in tokens
     ]
@@ -725,7 +399,7 @@ def send_expo_push_notifications(tokens: list[str], title: str, body: str, order
             "https://exp.host/--/api/v2/push/send",
             json=payload,
             headers={"Content-Type": "application/json"},
-            timeout=10
+            timeout=10,
         )
         print("EXPO PUSH SENT SUCCESS:", response.status_code, response.text)
     except Exception as e:
