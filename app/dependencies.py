@@ -78,3 +78,14 @@ async def get_current_business(
         )
 
     return business
+
+
+async def get_current_founder(
+    business: Business = Depends(get_current_business)
+):
+    if business.role != "FOUNDER":
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
+    return business

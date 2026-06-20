@@ -79,6 +79,7 @@ class Business(Base):
     owner_name = Column(String)
     email = Column(String, unique=True)
     password_hash = Column(String)
+    role = Column(String, default="MERCHANT", nullable=False)
     pickup_verification_enabled = Column(
         Boolean,
         default=True,

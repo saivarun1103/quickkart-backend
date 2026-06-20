@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, Depends
 from app.webhook import router
-from app.routes import payment, public, business_settings
+from app.routes import payment, public, business_settings, founder
 from contextlib import asynccontextmanager
 from app.db import engine, get_db
 from app.models import Base, MenuItem, Business, User, MenuSession, PushToken
@@ -18,7 +18,7 @@ from app.services.razorpay_service import create_payment_link
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 
 # database
@@ -27,6 +27,8 @@ async def lifespan(app: FastAPI):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS role VARCHAR NOT NULL DEFAULT 'MERCHANT'"))
+        await conn.execute(text("UPDATE businesses SET role = 'FOUNDER' WHERE email = 'varun.1103@gmail.com'"))
 
     yield
 
@@ -37,6 +39,7 @@ app.include_router(router)
 app.include_router(admin_router)
 app.include_router(payment.router, prefix="/api")
 app.include_router(business_settings.router)
+app.include_router(founder.router)
 
 origins = [
     # "http://localhost:5173",
@@ -138,6 +141,7 @@ def get_business(business: Business = Depends(get_current_business)):
         "business_type": business.business_type,
         "slug": business.slug,
         "location_name": business.location_name,
+        "role": business.role,
     }
 
 
@@ -169,6 +173,8 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     slug = data.business_name.lower().replace(" ", "-")
 
+    role = "FOUNDER" if data.email.strip().lower() == "varun.1103@gmail.com" else "MERCHANT"
+
     business = Business(
         name=data.business_name,
         owner_name=data.owner_name,
@@ -177,6 +183,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
         business_type=data.business_type,
         password_hash=hashed_password,
         slug=slug,
+        role=role,
     )
 
     db.add(business)

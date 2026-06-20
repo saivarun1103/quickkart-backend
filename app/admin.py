@@ -327,7 +327,8 @@ def get_me(
         "id": business.id,
         "business_name": business.name,
         "email": business.email,
-        "logo_url": business.logo_url
+        "logo_url": business.logo_url,
+        "role": business.role
     }
 
 ##Admin orders page.
