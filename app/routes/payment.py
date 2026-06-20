@@ -349,7 +349,6 @@ async def verify_payment(
         f"{order.id}",
         order.total_price,
         items_count,
-        ("goskipdq.com/admin"),
     )
 
     # -------------------------
