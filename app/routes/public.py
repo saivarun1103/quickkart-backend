@@ -182,23 +182,13 @@ async def search_businesses(
 ):
 
     result = await db.execute(
-
         select(Business).where(
-
+            Business.role != "FOUNDER",
             or_(
-
-                Business.name.ilike(
-                    f"%{q}%"
-                ),
-
-                Business.business_phone.ilike(
-                    f"%{q}%"
-                )
-
+                Business.name.ilike(f"%{q}%"),
+                Business.business_phone.ilike(f"%{q}%")
             )
-
         )
-
     )
 
     businesses = (
@@ -244,6 +234,7 @@ async def get_popular_businesses(
 
     result = await db.execute(
         select(Business)
+        .where(Business.role != "FOUNDER")
         .limit(10)
     )
 

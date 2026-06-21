@@ -17,7 +17,7 @@ from app.config import DATABASE_URL
 ASYNC_DATABASE_URL = DATABASE_URL.replace(
     "postgresql://",
     "postgresql+asyncpg://"
-)
+).replace("sslmode=require", "ssl=require")
 
 
 # -------------------------
