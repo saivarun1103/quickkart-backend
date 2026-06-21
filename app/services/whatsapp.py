@@ -222,15 +222,20 @@ def send_customer_order_confirmation(
 
 def send_merchant_new_order(
     phone: str,
-    business_name: str,
+    customer_name: str,
     order_number: str,
     amount: float,
-    items_count: int,
+    items_text: str,
 ):
     send_template(
         phone=phone,
         template_name="new_order_alert",
-        body_params=[business_name, order_number, amount, items_count],
+        body_params=[
+            customer_name,
+            order_number,
+            amount,
+            items_text
+        ]
     )
 
 

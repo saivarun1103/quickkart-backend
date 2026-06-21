@@ -340,17 +340,26 @@ async def verify_payment(
     # MERCHANT NOTIFICATION
     # -------------------------
 
-    items_count = sum(int(quantity) for quantity in order.items.values())
+    items_text = ", ".join(
+        [
+            f"{qty}x {item}"
+            for item, qty in order.items.items()
+        ]
+    )
 
     background_tasks.add_task(
         send_merchant_new_order,
-        business.business_phone,
-        business.name,
-        f"{order.id}",
-        order.total_price,
-        items_count,
-    )
 
+        business.business_phone,
+
+        order.customer_name or "Customer",
+
+        f"BK{order.id}",
+
+        order.total_price,
+
+        items_text
+    )
     # -------------------------
     # PUSH NOTIFICATION FOR MERCHANT
     # -------------------------
