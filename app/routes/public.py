@@ -165,7 +165,10 @@ async def get_public_order(
                 order.created_at,
 
             "logo_url":
-                business.logo_url
+                business.logo_url,
+
+            "pickup_verification_enabled":
+                business.pickup_verification_enabled
         }
     }
 

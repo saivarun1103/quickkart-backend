@@ -229,7 +229,7 @@ def send_merchant_new_order(
 ):
     send_template(
         phone=phone,
-        template_name="new_order_alert",
+        template_name="new_order_alert_v2",
         body_params=[
             customer_name,
             order_number,
