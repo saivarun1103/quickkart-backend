@@ -60,3 +60,6 @@ class VerifyResetOTPRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     reset_token: str
     new_password: str
+
+class RejectMerchantRequest(BaseModel):
+    review_notes: Optional[str] = None

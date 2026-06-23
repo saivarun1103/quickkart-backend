@@ -115,6 +115,29 @@ class Business(Base):
         nullable=True
     )
 
+    approval_status = Column(
+        String,
+        default="pending",
+        nullable=False
+    )
+
+    reviewed_at = Column(
+        DateTime,
+        nullable=True
+    )
+
+    reviewed_by = Column(
+        Integer,
+        ForeignKey("businesses.id"),
+        nullable=True
+    )
+
+    review_notes = Column(
+        Text,
+        nullable=True
+    )
+
+
 class Payment(Base):
     __tablename__ = "payments"
     id = Column(

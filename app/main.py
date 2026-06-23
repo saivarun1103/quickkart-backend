@@ -181,6 +181,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     slug = data.business_name.lower().replace(" ", "-")
 
     role = "FOUNDER" if data.email.strip().lower() == "varun.1103@gmail.com" else "MERCHANT"
+    approval_status = "approved" if role == "FOUNDER" else "pending"
 
     business = Business(
         name=data.business_name,
@@ -191,6 +192,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
         password_hash=hashed_password,
         slug=slug,
         role=role,
+        approval_status=approval_status,
         location_name=data.location_name,
         latitude=data.latitude,
         longitude=data.longitude,
@@ -234,6 +236,14 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     if not valid_password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # 🛡️ Onboarding Approval Status check (Founders bypass review blocks)
+    if business.role != "FOUNDER":
+        status = business.approval_status or "approved"
+        if status == "pending":
+            raise HTTPException(status_code=403, detail="Your account is currently under review.")
+        elif status == "rejected":
+            raise HTTPException(status_code=403, detail="Your application was not approved. Please contact support.")
 
     # 🎟️ Create JWT
     token = create_access_token({"business_id": business.id, "email": business.email})

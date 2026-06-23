@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from app.db import get_db
 from app.dependencies import get_current_founder
 from app.models import Business, Order
+from app.schemas import RejectMerchantRequest
 
 router = APIRouter(prefix="/api/founder", tags=["Founder"])
 
@@ -323,3 +324,76 @@ async def get_activity(
     
     # Return top 20 activities
     return activities[:20]
+
+
+# --- Onboarding Review Endpoints ---
+
+@router.get("/reviews")
+async def get_reviews(
+    db: AsyncSession = Depends(get_db),
+    founder: Business = Depends(get_current_founder)
+):
+    result = await db.execute(
+        select(Business)
+        .where(Business.role == "MERCHANT")
+        .order_by(desc(Business.created_at))
+    )
+    merchants = result.scalars().all()
+    return merchants
+
+@router.get("/reviews/pending")
+async def get_pending_reviews(
+    db: AsyncSession = Depends(get_db),
+    founder: Business = Depends(get_current_founder)
+):
+    result = await db.execute(
+        select(Business)
+        .where(
+            and_(
+                Business.role == "MERCHANT",
+                Business.approval_status == "pending"
+            )
+        )
+        .order_by(desc(Business.created_at))
+    )
+    merchants = result.scalars().all()
+    return merchants
+
+@router.post("/reviews/{business_id}/approve")
+async def approve_merchant(
+    business_id: int,
+    db: AsyncSession = Depends(get_db),
+    founder: Business = Depends(get_current_founder)
+):
+    result = await db.execute(select(Business).where(Business.id == business_id))
+    business = result.scalar_one_or_none()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+    
+    business.approval_status = "approved"
+    business.reviewed_at = datetime.now()
+    business.reviewed_by = founder.id
+    
+    await db.commit()
+    return {"success": True, "message": f"Merchant '{business.name}' approved successfully."}
+
+@router.post("/reviews/{business_id}/reject")
+async def reject_merchant(
+    business_id: int,
+    data: RejectMerchantRequest,
+    db: AsyncSession = Depends(get_db),
+    founder: Business = Depends(get_current_founder)
+):
+    result = await db.execute(select(Business).where(Business.id == business_id))
+    business = result.scalar_one_or_none()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+    
+    business.approval_status = "rejected"
+    business.reviewed_at = datetime.now()
+    business.reviewed_by = founder.id
+    business.review_notes = data.review_notes
+    
+    await db.commit()
+    return {"success": True, "message": f"Merchant '{business.name}' rejected successfully."}
+
