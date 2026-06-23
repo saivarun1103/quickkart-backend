@@ -1,5 +1,5 @@
 from app.db import Base
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, Text, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, Text, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timedelta, timezone
 
@@ -101,12 +101,12 @@ class Business(Base):
     )
 
     latitude = Column(
-        String,
+        Numeric,
         nullable=True
     )
 
     longitude = Column(
-        String,
+        Numeric,
         nullable=True
     )
 
