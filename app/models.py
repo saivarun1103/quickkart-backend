@@ -110,6 +110,11 @@ class Business(Base):
         nullable=True
     )
 
+    contact_number = Column(
+        String,
+        nullable=True
+    )
+
 class Payment(Base):
     __tablename__ = "payments"
     id = Column(

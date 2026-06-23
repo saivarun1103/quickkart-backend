@@ -21,6 +21,10 @@ class RegisterRequest(BaseModel):
     business_phone: str
     password: str
     business_type: str
+    location_name: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    contact_number: Optional[str] = None
 
 class LoginRequest(BaseModel):
     identifier: str

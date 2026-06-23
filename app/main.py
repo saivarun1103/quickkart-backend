@@ -184,6 +184,10 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
         password_hash=hashed_password,
         slug=slug,
         role=role,
+        location_name=data.location_name,
+        latitude=data.latitude,
+        longitude=data.longitude,
+        contact_number=normalize_phone(data.contact_number) if data.contact_number else None,
     )
 
     db.add(business)

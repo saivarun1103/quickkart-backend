@@ -219,6 +219,15 @@ async def search_businesses(
         for business in businesses
     ]
 
+@router.get("/public/business/types")
+async def get_business_types(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Business.business_type).distinct())
+    types = result.scalars().all()
+    types_list = sorted(list(set(t for t in types if t)))
+    if not types_list:
+        types_list = ["Tiffins", "Restaurant", "Cafe", "Fast Food", "Grocery", "Bakery"]
+    return types_list
+
 @router.get("/public/test")
 async def public_test():
     return {
