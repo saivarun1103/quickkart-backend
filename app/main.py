@@ -3,22 +3,29 @@ from app.webhook import router
 from app.routes import payment, public, business_settings, founder
 from contextlib import asynccontextmanager
 from app.db import engine, get_db
-from app.models import Base, MenuItem, Business, User, MenuSession, PushToken
+from app.models import Base, MenuItem, Business, User, MenuSession, PushToken, PasswordResetOTP
 from fastapi.middleware.cors import CORSMiddleware
 from app.admin import router as admin_router
-from app.schemas import LoginRequest, RegisterRequest
+from app.schemas import LoginRequest, RegisterRequest, ForgotPasswordRequest, VerifyResetOTPRequest, ResetPasswordRequest
 from app.auth import (
     hash_password,
     verify_password,
     create_access_token,
     normalize_phone,
+    SECRET_KEY,
+    ALGORITHM,
+    decode_token,
 )
 from app.dependencies import get_current_business
 from app.services.razorpay_service import create_payment_link
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func, update
+import random
+from jose import jwt
+from app.services.whatsapp import send_password_reset_otp
+
 
 
 # database
@@ -486,3 +493,147 @@ async def register_push_token(
 
     await db.commit()
     return {"success": True, "message": "Push token registered successfully"}
+
+
+@app.post("/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    import asyncio
+    
+    # 1. Validate / normalize phone number
+    normalized_phone = normalize_phone(data.phone)
+
+    # 2. Check if a business exists with this phone number
+    result = await db.execute(
+        select(Business).where(Business.business_phone == normalized_phone)
+    )
+    business = result.scalar_one_or_none()
+    if not business:
+        raise HTTPException(
+            status_code=400,
+            detail="This phone number is not registered."
+        )
+
+    # 3. Rate limit check: Maximum 3 requests per 15 minutes per phone number
+    time_limit = datetime.now() - timedelta(minutes=15)
+    rate_result = await db.execute(
+        select(func.count(PasswordResetOTP.id))
+        .where(
+            PasswordResetOTP.phone == normalized_phone,
+            PasswordResetOTP.created_at >= time_limit
+        )
+    )
+    count = rate_result.scalar() or 0
+    if count >= 3:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many OTP requests. Please try again after 15 minutes."
+        )
+
+    # 4. Generate secure 6-digit OTP
+    otp = f"{random.randint(100000, 999999)}"
+
+    # 5. Invalidate previous OTPs for this phone number
+    await db.execute(
+        update(PasswordResetOTP)
+        .where(PasswordResetOTP.phone == normalized_phone, PasswordResetOTP.used == False)
+        .values(used=True)
+    )
+
+    # 6. Store OTP in database with 10 minutes expiry
+    expires_at = datetime.now() + timedelta(minutes=10)
+    reset_otp = PasswordResetOTP(
+        business_id=business.id,
+        phone=normalized_phone,
+        otp=otp,
+        expires_at=expires_at,
+    )
+    db.add(reset_otp)
+    await db.commit()
+
+    # 7. Send OTP through WhatsApp using template reset_password_otp
+    try:
+        send_password_reset_otp(phone=normalized_phone, otp=otp)
+    except Exception as e:
+        print("FAILED TO SEND WHATSAPP OTP:", e)
+
+    # 8. Return success response
+    return {"message": "OTP sent successfully"}
+
+
+@app.post("/auth/verify-reset-otp")
+async def verify_reset_otp(data: VerifyResetOTPRequest, db: AsyncSession = Depends(get_db)):
+    normalized_phone = normalize_phone(data.phone)
+    now = datetime.now()
+
+    # 1. Fetch valid OTP entry
+    result = await db.execute(
+        select(PasswordResetOTP)
+        .where(
+            PasswordResetOTP.phone == normalized_phone,
+            PasswordResetOTP.otp == data.otp,
+            PasswordResetOTP.used == False,
+            PasswordResetOTP.expires_at > now
+        )
+    )
+    reset_otp = result.scalar_one_or_none()
+
+    if not reset_otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    # 2. Issue a short-lived reset token (10 minutes)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=10)
+    to_encode = {
+        "sub": "password_reset",
+        "business_id": reset_otp.business_id,
+        "otp_id": reset_otp.id,
+        "exp": expire
+    }
+    reset_token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    return {
+        "verified": True,
+        "reset_token": reset_token
+    }
+
+
+@app.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    # 1. Validate / decode token
+    payload = decode_token(data.reset_token)
+    if not payload or payload.get("sub") != "password_reset":
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    business_id = payload.get("business_id")
+    otp_id = payload.get("otp_id")
+
+    # 2. Verify OTP hasn't been used yet to prevent token reuse
+    result = await db.execute(
+        select(PasswordResetOTP).where(PasswordResetOTP.id == otp_id)
+    )
+    reset_otp = result.scalar_one_or_none()
+
+    if not reset_otp or reset_otp.used:
+        raise HTTPException(status_code=400, detail="This reset token has already been used or is invalid")
+
+    # 3. Validate password length (min 8 characters)
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+
+    # 4. Find business
+    biz_result = await db.execute(
+        select(Business).where(Business.id == business_id)
+    )
+    business = biz_result.scalar_one_or_none()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+
+    # 5. Hash new password and update business password
+    hashed_pwd = hash_password(data.new_password)
+    business.password_hash = hashed_pwd
+
+    # 6. Mark OTP as used
+    reset_otp.used = True
+
+    await db.commit()
+
+    return {"message": "Password reset successful"}

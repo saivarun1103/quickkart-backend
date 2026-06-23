@@ -204,3 +204,18 @@ class PushToken(Base):
     )
     token = Column(String, unique=True, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.now)
+
+class PasswordResetOTP(Base):
+    __tablename__ = "password_reset_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(
+        Integer,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    phone = Column(String, nullable=False, index=True)
+    otp = Column(String(6), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.now)

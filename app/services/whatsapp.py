@@ -11,6 +11,7 @@ def send_template(
     body_params: list = None,
     button_params: list = None,
     language: str = "en",
+    button_subtype: str = "url",
 ):
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
 
@@ -38,7 +39,7 @@ def send_template(
             components.append(
                 {
                     "type": "button",
-                    "sub_type": "url",
+                    "sub_type": button_subtype,
                     "index": str(index),
                     "parameters": [
                         {"type": "text", "text": str(param)} for param in params
@@ -264,3 +265,34 @@ def send_customer_thank_you(phone: str, customer_name: str, business_name: str):
         template_name="thank_you_visit_again",
         body_params=[customer_name, business_name],
     )
+
+def send_password_reset_otp(phone: str, otp: str):
+    cleaned_phone = phone.replace("+", "")
+    
+    # 1. Try sending with sub_type="copy_code" (standard for authentication templates with copy code buttons)
+    print(f"Attempting to send OTP template message to {cleaned_phone} with button_subtype='copy_code'...")
+    res = send_template(
+        phone=cleaned_phone,
+        template_name="reset_password_otp",
+        body_params=[otp],
+        button_params=[[otp]],
+        button_subtype="copy_code"
+    )
+    
+    # 2. Check if it failed because the active template requires a URL button instead
+    if isinstance(res, dict) and "error" in res:
+        error_msg = res["error"].get("message", "")
+        error_data = res["error"].get("error_data", {})
+        details = error_data.get("details", "") if isinstance(error_data, dict) else ""
+        
+        if "type Url" in details or "type Url" in error_msg:
+            print("Detected URL button requirement. Retrying with button_subtype='url'...")
+            res = send_template(
+                phone=cleaned_phone,
+                template_name="reset_password_otp",
+                body_params=[otp],
+                button_params=[[otp]],
+                button_subtype="url"
+            )
+            
+    return res

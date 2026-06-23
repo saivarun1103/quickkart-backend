@@ -49,3 +49,14 @@ class BusinessSettingsUpdate(
     status: str
     logo_url: str | None = None
     banner_url: str | None = None
+
+class ForgotPasswordRequest(BaseModel):
+    phone: str
+
+class VerifyResetOTPRequest(BaseModel):
+    phone: str
+    otp: str
+
+class ResetPasswordRequest(BaseModel):
+    reset_token: str
+    new_password: str
