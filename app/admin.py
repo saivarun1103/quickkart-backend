@@ -856,7 +856,7 @@ async def get_analytics(
                     order.payment_status,
 
                 "order_number":
-                    f"BK{order.id}",
+                    order.id,
 
                 "items":
                     enriched_items

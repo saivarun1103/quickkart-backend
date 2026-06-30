@@ -331,7 +331,7 @@ async def verify_payment(
         order.phone,
         order.customer_name or "Customer",
         business.name,
-        f"BK{order.id}",
+        order.id,
         order.total_price,
         order.access_token,
     )
@@ -354,7 +354,7 @@ async def verify_payment(
 
         order.customer_name or "Customer",
 
-        f"BK{order.id}",
+        order.id,
 
         order.total_price,
 
