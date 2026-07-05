@@ -5,14 +5,18 @@ from sqlalchemy.ext.asyncio import (
 
 from sqlalchemy import (
     select,
-    or_
+    or_,
+    func,
+    cast,
+    String
 )
 
 from app.db import get_db
 from app.models import (
     Order,
     MenuItem,
-    Business
+    Business,
+    User
 )
 from app.services.whatsapp import (
     send_customer_order_confirmation,
@@ -314,3 +318,86 @@ async def test_order_whatsapp():
         "message":
         "WhatsApp test sent"
     }
+
+
+@router.get("/public/orders")
+async def get_public_orders(
+    phone: str,
+    page: int = 1,
+    limit: int = 10,
+    query: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    # Normalize phone number
+    normalized_phone = phone.strip().replace(" ", "")
+    if len(normalized_phone) == 10:
+        normalized_phone = "91" + normalized_phone
+    elif normalized_phone.startswith("+"):
+        normalized_phone = normalized_phone.replace("+", "")
+        
+    # Get customer name
+    user_res = await db.execute(select(User).where(User.phone == normalized_phone))
+    user = user_res.scalar_one_or_none()
+    customer_name = user.customer_name if user else "Customer"
+
+    # Base stmt
+    stmt = select(Order).where(
+        Order.phone == normalized_phone,
+        Order.payment_status == "paid"
+    )
+    
+    count_stmt = select(func.count(Order.id)).where(
+        Order.phone == normalized_phone,
+        Order.payment_status == "paid"
+    )
+    
+    if query:
+        q = query.strip()
+        stmt = stmt.join(Business, Business.id == Order.business_id).where(
+            or_(
+                cast(Order.id, String).ilike(f"%{q}%"),
+                Business.name.ilike(f"%{q}%")
+            )
+        )
+        count_stmt = count_stmt.join(Business, Business.id == Order.business_id).where(
+            or_(
+                cast(Order.id, String).ilike(f"%{q}%"),
+                Business.name.ilike(f"%{q}%")
+            )
+        )
+
+    # Calculate total count of paid orders matching filter
+    total_result = await db.execute(count_stmt)
+    total_count = total_result.scalar() or 0
+
+    # Retrieve items for the current page
+    offset = (page - 1) * limit
+    result = await db.execute(
+        stmt.order_by(Order.created_at.desc()).limit(limit).offset(offset)
+    )
+    orders = result.scalars().all()
+    
+    response_orders = []
+    for order in orders:
+        business_res = await db.execute(
+            select(Business).where(Business.id == order.business_id)
+        )
+        business = business_res.scalar_one_or_none()
+        
+        response_orders.append({
+            "id": order.id,
+            "access_token": order.access_token,
+            "status": order.status,
+            "payment_status": order.payment_status,
+            "total_price": order.total_price,
+            "created_at": order.created_at,
+            "business_name": business.name if business else "Unknown Business",
+            "business_logo_url": business.logo_url if business else None
+        })
+        
+    return {
+        "success": True,
+        "orders": response_orders,
+        "total": total_count,
+        "customer_name": customer_name
+    }

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db import get_db
-from app.models import Order, Payment, PushToken
+from app.models import Order, Payment, PushToken, DraftOrder
 from app.services.razorpay_service import create_razorpay_order
 import hmac
 import hashlib
@@ -209,42 +209,38 @@ async def create_payment_order(data: dict, db: AsyncSession = Depends(get_db)):
         )
 
     # -------------------------
-    # CREATE ORDER
+    # CREATE RAZORPAY ORDER FIRST
     # -------------------------
 
-    access_token = secrets.token_urlsafe(16)
+    import random
+    receipt_id = f"draft_{random.randint(100000, 999999)}"
 
-    order = Order(
+    razorpay_order = create_razorpay_order(
+        amount=data["total"], receipt=receipt_id
+    )
+
+    # -------------------------
+    # CREATE DRAFT ORDER
+    # -------------------------
+
+    draft_order = DraftOrder(
+        id=razorpay_order["id"],
         phone=customer_phone,
         customer_name=customer_name,
         items=data["items"],
         total_price=data["total"],
-        pickup_pin=pin,
-        status="payment_pending",
-        payment_status="pending",
         business_id=data["business_id"],
         session_token=data.get("session_token"),
-        access_token=access_token,
     )
 
-    db.add(order)
+    db.add(draft_order)
 
     await db.commit()
 
-    await db.refresh(order)
-
-    # -------------------------
-    # CREATE RAZORPAY ORDER
-    # -------------------------
-
-    razorpay_order = create_razorpay_order(
-        amount=data["total"], receipt=f"order_{order.id}"
-    )
-
     return {
         "success": True,
-        "order_id": order.id,
-        "pickup_pin": order.pickup_pin,
+        "order_id": None,
+        "pickup_pin": None,
         "razorpay_order_id": razorpay_order["id"],
         "amount": razorpay_order["amount"],
         "key": RAZORPAY_KEY_ID,
@@ -255,19 +251,20 @@ async def create_payment_order(data: dict, db: AsyncSession = Depends(get_db)):
 async def verify_payment(
     data: dict, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ):
-
-    result = await db.execute(select(Order).where(Order.id == data["order_id"]))
-
-    order = result.scalar_one_or_none()
-
-    business_result = await db.execute(
-        select(Business).where(Business.id == order.business_id)
+    # Query DraftOrder using razorpay_order_id
+    result = await db.execute(
+        select(DraftOrder).where(DraftOrder.id == data["razorpay_order_id"])
     )
+    draft_order = result.scalar_one_or_none()
 
+    if not draft_order:
+        return {"success": False, "message": "Draft order not found"}
+
+    # Fetch business info
+    business_result = await db.execute(
+        select(Business).where(Business.id == draft_order.business_id)
+    )
     business = business_result.scalar_one_or_none()
-
-    if not order:
-        return {"success": False, "message": "Order not found"}
 
     # -------------------------
     # VERIFY SIGNATURE
@@ -283,26 +280,51 @@ async def verify_payment(
         return {"success": False, "message": "Invalid signature"}
 
     # -------------------------
-    # UPDATE ORDER
+    # GENERATE UNIQUE PIN
     # -------------------------
+    import random
+    while True:
+        pin = str(random.randint(1000, 9999))
+        pin_result = await db.execute(select(Order).where(Order.pickup_pin == pin))
+        existing = pin_result.scalars().first()
+        if not existing:
+            break
 
-    order.status = "pending"
+    # -------------------------
+    # GENERATE ACCESS TOKEN AFTER ORDER CREATION
+    # -------------------------
+    access_token = secrets.token_urlsafe(16)
 
-    order.payment_status = "paid"
+    # -------------------------
+    # CREATE REAL ORDER
+    # -------------------------
+    order = Order(
+        phone=draft_order.phone,
+        customer_name=draft_order.customer_name,
+        items=draft_order.items,
+        total_price=draft_order.total_price,
+        pickup_pin=pin,
+        status="pending",
+        payment_status="paid",
+        payment_id=data["razorpay_payment_id"],
+        business_id=draft_order.business_id,
+        session_token=draft_order.session_token,
+        access_token=access_token,
+    )
 
-    order.payment_id = data["razorpay_payment_id"]
+    db.add(order)
 
     # -------------------------
     # SAVE PAYMENT
     # -------------------------
 
     payment = Payment(
-        order_id=order.id,
-        business_id=order.business_id,
-        phone=order.phone,
-        customer_name=order.customer_name,
+        order_id=None,
+        business_id=draft_order.business_id,
+        phone=draft_order.phone,
+        customer_name=draft_order.customer_name,
         razorpay_payment_id=data["razorpay_payment_id"],
-        amount=order.total_price,
+        amount=draft_order.total_price,
         status="captured",
         payment_method="online",
     )
@@ -310,17 +332,25 @@ async def verify_payment(
     db.add(payment)
 
     # -------------------------
+    # DELETE DRAFT ORDER
+    # -------------------------
+    await db.delete(draft_order)
+
+    # Flush session to populate order.id for payment and notifications
+    await db.flush()
+    payment.order_id = order.id
+
+    # -------------------------
     # END SESSION
     # -------------------------
 
-    result = await db.execute(
-        select(MenuSession).where(MenuSession.session_token == order.session_token)
-    )
-
-    menu_session = result.scalar_one_or_none()
-
-    if menu_session:
-        menu_session.is_active = False
+    if order.session_token:
+        result = await db.execute(
+            select(MenuSession).where(MenuSession.session_token == order.session_token)
+        )
+        menu_session = result.scalar_one_or_none()
+        if menu_session:
+            menu_session.is_active = False
 
     # -------------------------
     # CUSTOMER NOTIFICATION
@@ -330,7 +360,7 @@ async def verify_payment(
         send_customer_order_confirmation,
         order.phone,
         order.customer_name or "Customer",
-        business.name,
+        business.name if business else "Business",
         order.id,
         order.total_price,
         order.access_token,
@@ -349,17 +379,13 @@ async def verify_payment(
 
     background_tasks.add_task(
         send_merchant_new_order,
-
-        business.business_phone,
-
+        business.business_phone if business else "",
         order.customer_name or "Customer",
-
         order.id,
-
         order.total_price,
-
         items_text
     )
+
     # -------------------------
     # PUSH NOTIFICATION FOR MERCHANT
     # -------------------------

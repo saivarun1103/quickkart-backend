@@ -242,3 +242,20 @@ class PasswordResetOTP(Base):
     expires_at = Column(DateTime, nullable=False)
     used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
+
+
+class DraftOrder(Base):
+    __tablename__ = "draft_orders"
+
+    id = Column(String, primary_key=True)  # razorpay_order_id
+    phone = Column(String)
+    customer_name = Column(String)
+    items = Column(JSONB)
+    total_price = Column(Integer)
+    business_id = Column(
+        Integer,
+        ForeignKey("businesses.id"),
+        nullable=False
+    )
+    session_token = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
