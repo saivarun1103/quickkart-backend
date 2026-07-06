@@ -863,12 +863,52 @@ async def get_analytics(
             }
         )
 
-    avg_order = (
-        total_sales /
-        total_orders
-        if total_orders > 0
-        else 0
+    # Calculate previous period dates
+    days_diff = (endDate - startDate).days + 1
+    prev_startDate = startDate - timedelta(days=days_diff)
+    prev_endDate = endDate - timedelta(days=days_diff)
+
+    prev_start = datetime.combine(prev_startDate, datetime.min.time())
+    prev_end = datetime.combine(prev_endDate + timedelta(days=1), datetime.min.time())
+
+    # Get previous period orders
+    prev_result = await db.execute(
+        select(Order).where(
+            Order.business_id == business.id,
+            Order.created_at >= prev_start,
+            Order.created_at < prev_end,
+            Order.payment_status == "paid"
+        )
     )
+    prev_orders = prev_result.scalars().all()
+
+    prev_total_orders = len(prev_orders)
+    prev_total_sales = sum(float(order.total_price) for order in prev_orders)
+    prev_avg_order = prev_total_sales / prev_total_orders if prev_total_orders > 0 else 0
+    prev_pickup_orders = len([o for o in prev_orders if o.status != "cancelled"])
+
+    # Current period metrics
+    avg_order = total_sales / total_orders if total_orders > 0 else 0
+    pickup_orders = len([o for o in orders if o.status != "cancelled"])
+
+    def get_percentage_change(current, previous):
+        if previous == 0:
+            if current == 0:
+                return "0.0%", "neutral"
+            else:
+                return "+100.0%", "up"
+        change = ((current - previous) / previous) * 100
+        if change > 0:
+            return f"+{change:.1f}%", "up"
+        elif change < 0:
+            return f"{change:.1f}%", "down"
+        else:
+            return "0.0%", "neutral"
+
+    orders_change, orders_trend = get_percentage_change(total_orders, prev_total_orders)
+    sales_change, sales_trend = get_percentage_change(total_sales, prev_total_sales)
+    avg_order_change, avg_order_trend = get_percentage_change(avg_order, prev_avg_order)
+    pickup_orders_change, pickup_orders_trend = get_percentage_change(pickup_orders, prev_pickup_orders)
 
     return {
         "startDate":
@@ -890,6 +930,13 @@ async def get_analytics(
             ),
 
         "orders":
-            response_orders
+            response_orders,
+
+        "metrics_changes": {
+            "total_orders": {"change": orders_change, "trend": orders_trend},
+            "total_sales": {"change": sales_change, "trend": sales_trend},
+            "pickup_orders": {"change": pickup_orders_change, "trend": pickup_orders_trend},
+            "avg_order": {"change": avg_order_change, "trend": avg_order_trend}
+        }
     }
 
