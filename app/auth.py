@@ -8,7 +8,7 @@ SECRET_KEY = "super-secret-key"
 
 ALGORITHM = "HS256"
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 10080
+ACCESS_TOKEN_EXPIRE_DAYS = 36500
 
 
 # 🔒 PASSWORD HASHING
@@ -34,14 +34,17 @@ def verify_password(
     )
 
 
-# 🎟️ CREATE JWT TOKEN
-def create_access_token(data: dict):
+# 🎟️ CREATE JWT TOKEN (Permanent token so admin stays logged in until manual logout)
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
     to_encode = data.copy()
 
-    expire = datetime.now(timezone.utc) + timedelta(
-        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
-    )
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(
+            days=ACCESS_TOKEN_EXPIRE_DAYS
+        )
 
     to_encode.update({
         "exp": expire
@@ -74,15 +77,16 @@ def normalize_phone(phone: str):
 
     return f"+{phone}"
 
-##decoding jwt token
-def decode_token(token: str):
+##decoding jwt token (verify_exp=False ensures inactive admin tokens never expire automatically)
+def decode_token(token: str, verify_exp: bool = False):
 
     try:
 
         payload = jwt.decode(
             token,
             SECRET_KEY,
-            algorithms=[ALGORITHM]
+            algorithms=[ALGORITHM],
+            options={"verify_exp": verify_exp}
         )
 
         return payload

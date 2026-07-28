@@ -55,7 +55,7 @@ origins = [
     # "https://quickkart-3f8h.onrender.com/api/business",
     "http://localhost:5173",
     # "http://localhost:8000",
-    # "http://192.168.0.106:5173",
+    "http://192.168.0.107:5173",
     # "http://192.168.0.106:8000",
     # "https://quickkart-frontend-beta.vercel.app",
     "https://goskipdq.com",
